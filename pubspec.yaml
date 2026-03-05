@@ -1,0 +1,31 @@
+name: dart_agent_core
+description: A Dart library for building stateful, tool-using AI agents with multi-provider LLM support (OpenAI, Gemini, AWS Bedrock).
+version: 1.0.0
+repository: https://github.com/memex-lab/dart_agent_core
+homepage: https://github.com/memex-lab/dart_agent_core
+topics:
+  - ai
+  - agent
+  - llm
+  - openai
+  - flutter
+
+environment:
+  sdk: ^3.10.4
+
+# Add regular dependencies here.
+dependencies:
+  aws_common: ^0.7.12
+  aws_signature_v4: ^0.6.10
+  crypto: ^3.0.7
+  dio: ^5.9.0
+  http: ^1.6.0
+  logging: ^1.3.0
+  uuid: ^4.5.2
+  # path: ^1.9.0
+
+dev_dependencies:
+  build_runner: ^2.11.0
+  lints: ^6.0.0
+  mockito: ^5.6.3
+  test: ^1.25.6
