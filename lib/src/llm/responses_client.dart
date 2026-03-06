@@ -20,6 +20,16 @@ class ResponsesClient extends LLMClient {
   final int maxRetries;
   final int initialRetryDelayMs;
   final int maxRetryDelayMs;
+  /// When true (default), the client derives [previous_response_id] from the last
+  /// [ModelMessage.responseId] in [messages] and only sends messages after that
+  /// response. When false, no automatic derivation is done; you can still pass
+  /// [ModelConfig.extra]['previous_response_id'] explicitly. Disable this if you
+  /// prefer to always send full history or manage previous_response_id yourself.
+  final bool autoPreviousResponseId;
+  /// Keys from [ModelConfig.extra] allowed to be forwarded to the API request body.
+  /// When null (default), uses: { 'reasoning', 'caching', 'expire_at', 'thinking', 'store' }.
+  /// Pass a custom set at construction to allow additional or different keys.
+  final Set<String>? extraAllowedKeys;
 
   ResponsesClient({
     required this.apiKey,
@@ -30,6 +40,8 @@ class ResponsesClient extends LLMClient {
     this.maxRetries = 3,
     this.initialRetryDelayMs = 1000,
     this.maxRetryDelayMs = 10000,
+    this.autoPreviousResponseId = true,
+    this.extraAllowedKeys,
     Dio? client,
   }) : _client = client ?? Dio() {
     configureProxy(_client, proxyUrl);
@@ -51,7 +63,10 @@ class ResponsesClient extends LLMClient {
       tools: tools,
       toolChoice: toolChoice,
       modelConfig: modelConfig,
+      stream: false,
       jsonOutput: jsonOutput,
+      autoPreviousResponseId: autoPreviousResponseId,
+      extraAllowedKeys: extraAllowedKeys,
     );
 
     int retryCount = 0;
@@ -179,6 +194,8 @@ class ResponsesClient extends LLMClient {
       modelConfig: modelConfig,
       stream: true,
       jsonOutput: jsonOutput,
+      autoPreviousResponseId: autoPreviousResponseId,
+      extraAllowedKeys: extraAllowedKeys,
     );
 
     StreamController<StreamingMessage> controller =
@@ -344,17 +361,37 @@ Map<String, dynamic> _createRequestBody(
   required ModelConfig modelConfig,
   bool stream = false,
   bool? jsonOutput,
+  bool autoPreviousResponseId = true,
+  Set<String>? extraAllowedKeys,
 }) {
-  // 1. Search backwards for responseId to determine previous_response_id
+  const defaultExtraAllowedKeys = {
+    'reasoning',
+    'caching',
+    'expire_at',
+    'thinking',
+    'store',
+  };
+  final allowedKeys = extraAllowedKeys ?? defaultExtraAllowedKeys;
+  // 1. Determine previous_response_id: explicit extra, or (if autoPreviousResponseId) from last ModelMessage
   String? previousResponseId =
       modelConfig.extra?['previous_response_id'] as String?;
   int cutoffIndex = -1;
 
-  if (previousResponseId == null) {
+  if (previousResponseId == null && autoPreviousResponseId) {
     for (int i = messages.length - 1; i >= 0; i--) {
       final m = messages[i];
       if (m is ModelMessage && m.responseId != null) {
         previousResponseId = m.responseId;
+        cutoffIndex = i;
+        break;
+      }
+    }
+  } else if (previousResponseId != null) {
+    // Explicit previous_response_id: still need cutoff so we only send messages after that point
+    // Only when effectiveAuto did not set cutoff, we send all messages (cutoffIndex stays -1)
+    for (int i = messages.length - 1; i >= 0; i--) {
+      final m = messages[i];
+      if (m is ModelMessage && m.responseId == previousResponseId) {
         cutoffIndex = i;
         break;
       }
@@ -552,13 +589,6 @@ Map<String, dynamic> _createRequestBody(
 
   // Extra parameters
   if (modelConfig.extra != null) {
-    const allowedKeys = {
-      'reasoning',
-      'caching',
-      'expire_at',
-      'thinking',
-      'store',
-    };
     for (final entry in modelConfig.extra!.entries) {
       if (allowedKeys.contains(entry.key)) {
         body[entry.key] = entry.value;
