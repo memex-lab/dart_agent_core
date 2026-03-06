@@ -2,7 +2,9 @@
 
 # Dart Agent Core
 
-**A Dart library for building stateful, tool-using AI agents**
+**A mobile-first, local-first Dart library for building stateful, tool-using AI agents**
+
+[English](README.md) | [简体中文](README.zh-CN.md)
 
 [![Pub Version](https://img.shields.io/pub/v/dart_agent_core?color=blue&style=flat-square)](https://pub.dev/packages/dart_agent_core)
 [![License: MIT](https://img.shields.io/badge/license-MIT-purple.svg?style=flat-square)](LICENSE)
@@ -10,7 +12,7 @@
 
 </div>
 
-`dart_agent_core` is a Dart library that implements an agentic loop with tool use, state persistence, and multi-turn memory. It connects to LLM APIs (OpenAI, Gemini, AWS Bedrock) and handles the orchestration layer — tool calling, streaming, context management, and sub-agent delegation — entirely in Dart, which makes it suitable for use in Flutter apps without a Python or Node.js backend.
+`dart_agent_core` is a mobile-first, local-first Dart library that implements an agentic loop with tool use, state persistence, and multi-turn memory. It connects to LLM APIs (OpenAI, Gemini, AWS Bedrock) and handles the orchestration layer — tool calling, streaming, context management, and sub-agent delegation — entirely in Dart, which makes it suitable for use in Flutter apps without a Python or Node.js backend.
 
 ---
 
