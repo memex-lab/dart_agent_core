@@ -12,6 +12,7 @@ export 'src/llm/openai_client.dart';
 export 'src/llm/gemini_client.dart';
 export 'src/llm/responses_client.dart';
 export 'src/llm/bedrock_claude_client.dart';
+export 'src/llm/claude_client.dart';
 
 export 'src/agent/state_storage.dart';
 export 'src/agent/file_state_storage.dart';
