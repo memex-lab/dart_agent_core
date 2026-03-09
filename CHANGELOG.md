@@ -1,3 +1,9 @@
+## 1.0.2
+
+- Add standard entry-point `example/main.dart` to fix pub.dev example discovery.
+- Add comprehensive API documentation comments (`///`) to core library members.
+- Fix library-level documentation in `lib/dart_agent_core.dart`.
+
 ## 1.0.1
 
 - Add `ClaudeClient` for direct Anthropic Messages API support (no AWS Bedrock required).

@@ -66,7 +66,10 @@ class ToolsHistoryItem {
   }
 }
 
+/// Represents the state of an AI agent, including its history, token usage,
+/// active skills, and planning metadata.
 class AgentState {
+  /// Unique session identifier.
   String sessionId;
   bool isRunning;
   Map<String, String> systemReminders;
@@ -248,27 +251,67 @@ typedef SystemCallback =
       List<LLMMessage> requestMessages,
     );
 
+/// A stateful AI agent that orchestrates LLM calls, tool execution,
+/// skill management, and context compression.
 class StatefulAgent {
   final Logger _logger = Logger('StatefulAgent');
+
+  /// The human-readable name of the agent.
   final String name;
+
+  /// Unique identifier generated for this agent instance.
   final String id = uuid.v4();
+
+  /// The LLM client used to communicate with AI providers.
   final LLMClient client;
+
+  /// Configuration for the LLM (model, temperature, etc.).
   final ModelConfig modelConfig;
+
+  /// List of tools available to the agent.
   final List<Tool>? tools;
+
+  /// List of system prompts that define the agent's behavior.
   final List<String> systemPrompts;
+
+  /// Explicit instructions for tool selection.
   final ToolChoice? toolChoice;
+
+  /// The current state of the agent.
   final AgentState state;
+
+  /// Optional compressor for managing long contexts.
   final ContextCompressor? compressor;
   late final Planner _planner;
+
+  /// The planning mode (auto, must, or null to disable).
   final PlanMode? planMode;
+
+  /// Modular capabilities that can be activated/deactivated.
   final List<Skill>? skills;
+
+  /// Registered sub-agents for task delegation.
   final List<SubAgent>? subAgents;
+
+  /// Whether to disable sub-agent delegation.
   final bool disableSubAgents;
+
+  /// Whether to include general principles in the system message.
   final bool withGeneralPrinciples;
+
+  /// Controller for intercepting agent events.
   final AgentController? controller;
+
+  /// Whether this agent is running as a sub-agent.
   final bool isSubAgent;
+
+  /// Mechanism for detecting infinite tool loops.
   late final LoopDetector loopDetector;
+
+  /// Optional callback for persisting state on changes.
   final Function(AgentState state)? autoSaveStateFunc;
+
+  /// Optional callback to dynamically modify LLM requests before they are sent.
   final SystemCallback? systemCallback;
 
   StatefulAgent({

@@ -1,3 +1,8 @@
+/// Defines a tool that can be executed by an agent.
+///
+/// A tool consists of a name, description, and a JSON Schema for its parameters.
+/// It also contains an [executable] function that is called when the agent
+/// decides to use this tool.
 class Tool {
   final String name;
   final String description;
