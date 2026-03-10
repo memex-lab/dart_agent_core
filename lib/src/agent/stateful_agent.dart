@@ -314,6 +314,9 @@ class StatefulAgent {
   /// Optional callback to dynamically modify LLM requests before they are sent.
   final SystemCallback? systemCallback;
 
+  /// Maximum number of turns (LLM calls) allowed in a single run.
+  final int maxTurns;
+
   StatefulAgent({
     required this.name,
     List<String>? systemPrompts,
@@ -333,6 +336,7 @@ class StatefulAgent {
     this.isSubAgent = false,
     this.disableSubAgents = false,
     this.systemCallback,
+    this.maxTurns = 20,
   }) : systemPrompts = systemPrompts ?? [] {
     _planner = Planner(this, controller);
     this.loopDetector =
@@ -498,11 +502,13 @@ class StatefulAgent {
     List<LLMMessage> messages, {
     CancelToken? cancelToken,
     bool useStream = true,
+    int? maxTurns,
   }) async {
     final streamResponse = runStream(
       messages,
       cancelToken: cancelToken,
       useStream: useStream,
+      maxTurns: maxTurns,
     );
     final responses = <LLMMessage>[];
     await for (final event in streamResponse) {
@@ -518,9 +524,13 @@ class StatefulAgent {
     List<LLMMessage> messages, {
     CancelToken? cancelToken,
     bool useStream = true,
+    int? maxTurns,
   }) async* {
     AgentException? error;
     List<ModelMessage> modelMessages = [];
+    final currentMaxTurns = maxTurns ?? this.maxTurns;
+    int currentRetryCount = 0;
+    const int maxRetryCount = 3;
     try {
       if (controller != null) {
         final response = await controller!.request(
@@ -551,6 +561,13 @@ class StatefulAgent {
       state.isRunning = true;
       state.lastError = null;
       while (true) {
+        if (state.currentLoopCount >= currentMaxTurns) {
+          throw AgentException(
+            AgentExceptionCode.loopDetection,
+            'Maximum turns reached ($currentMaxTurns). Possible infinite loop.',
+          );
+        }
+
         if (compressor != null) {
           await compressor!.compress(state);
         }
@@ -835,6 +852,13 @@ class StatefulAgent {
           _logger.warning(
             '[$name] ⚠️ Model returned empty stop reason, retry again',
           );
+          currentRetryCount++;
+          if (currentRetryCount >= maxRetryCount) {
+            throw AgentException(
+              AgentExceptionCode.loopDetection,
+              'Maximum consecutive empty stop reason retries reached ($maxRetryCount).',
+            );
+          }
           yield StreamingEvent(
             eventType: StreamingEventType.modelRetrying,
             data: {"retryReason": "Model returned empty stop reason"},
@@ -851,6 +875,13 @@ class StatefulAgent {
           _logger.warning(
             '[$name] ⚠️ Model returned empty response, retry again',
           );
+          currentRetryCount++;
+          if (currentRetryCount >= maxRetryCount) {
+            throw AgentException(
+              AgentExceptionCode.loopDetection,
+              'Maximum consecutive empty response retries reached ($maxRetryCount).',
+            );
+          }
           yield StreamingEvent(
             eventType: StreamingEventType.modelRetrying,
             data: {"retryReason": "Model returned empty response"},
@@ -860,6 +891,9 @@ class StatefulAgent {
           );
           continue;
         }
+
+        currentRetryCount =
+            0; // Reset retry count after getting a non-empty response
 
         // Reconstruct full message for history
         final fullMessage = ModelMessage(

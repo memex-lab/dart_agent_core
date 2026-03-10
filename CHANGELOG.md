@@ -1,3 +1,8 @@
+## 1.0.3
+
+- Add `maxTurns` protection to `StatefulAgent` to prevent potential infinite loops.
+- Add internal retry limit for empty model responses/stop reasons in `runStream`.
+
 ## 1.0.2
 
 - Add standard entry-point `example/main.dart` to fix pub.dev example discovery.
