@@ -266,12 +266,18 @@ Optional flutter_js implementation guidance (not compiled in this package):
      flutter_js: ^0.8.7
 
 2) Implement JavaScriptRuntime using flutter_js and plug it into StatefulAgent.
-   Note: in the current framework contract, tool input `args` is a JSON object string,
-   parsed by StatefulAgent before runtime execution. This runtime receives `args` as
-   `Map<String, dynamic>?` and exposes that parsed object to scripts as `ctx.args`.
-   Full example:
+   Tool input `args` is a JSON object string; StatefulAgent parses it before
+   calling executeFile. The runtime receives `args` as Map<String, dynamic>?
+   and exposes it to scripts as ctx.args.
 
-   import 'dart:async';
+   QuickJS (Android/Linux/Windows) does not resolve Promises automatically.
+   You must use evaluateAsync + executePendingJob + handlePromise so that
+   the event loop is driven until the script Promise settles. getJavascriptRuntime()
+   already calls enableHandlePromises(); use it or call enableHandlePromises()
+   yourself if you supply a custom runtime.
+
+   Full example (tested with flutter_js 0.8.7):
+
    import 'dart:convert';
    import 'dart:io';
    import 'package:dart_agent_core/dart_agent_core.dart';
@@ -303,36 +309,9 @@ Optional flutter_js implementation guidance (not compiled in this package):
        final bridgeChannel = '__dart_agent_bridge_\$execId';
        final resultChannel = '__dart_agent_result_\$execId';
        final timeoutDuration = timeout ?? const Duration(seconds: 30);
-
-       final stdoutBuffer = StringBuffer();
        final stderrBuffer = StringBuffer();
-       final completer = Completer<JavaScriptExecutionResult>();
 
-       void completeOnce(JavaScriptExecutionResult result) {
-         if (!completer.isCompleted) completer.complete(result);
-       }
-
-       runtime.onMessage(resultChannel, (dynamic raw) {
-         final packet = _decode(raw);
-         if (packet == null) return;
-         final type = packet['type']?.toString();
-         if (type == 'result') {
-           completeOnce(JavaScriptExecutionResult(
-             success: true,
-             result: packet['result'],
-             stdout: stdoutBuffer.toString(),
-             stderr: stderrBuffer.toString(),
-           ));
-         } else if (type == 'error') {
-           completeOnce(JavaScriptExecutionResult(
-             success: false,
-             error: (packet['error'] ?? 'Unknown JavaScript error').toString(),
-             stdout: stdoutBuffer.toString(),
-             stderr: stderrBuffer.toString(),
-           ));
-         }
-       });
-
+       // Register bridge-call handler so JS scripts can call back into Dart.
        runtime.onMessage(bridgeChannel, (dynamic raw) async {
          final packet = _decode(raw);
          if (packet == null) return;
@@ -343,7 +322,8 @@ Optional flutter_js implementation guidance (not compiled in this package):
          if (requestId == null || channel == null) return;
 
          try {
-           final value = await bridgeRegistry.invoke(channel, payload, bridgeContext);
+           final value =
+               await bridgeRegistry.invoke(channel, payload, bridgeContext);
            final js =
                "globalThis.__dartAgentBridgeResolve(\${jsonEncode(requestId)}, \${jsonEncode(value)});";
            final eval = runtime.evaluate(js);
@@ -362,20 +342,33 @@ Optional flutter_js implementation guidance (not compiled in this package):
          bridgeChannel: bridgeChannel,
          resultChannel: resultChannel,
        );
-       final evalResult = runtime.evaluate(bootstrap);
+
+       // evaluateAsync → executePendingJob → handlePromise (flutter_js protocol)
+       final evalResult = await runtime.evaluateAsync(bootstrap);
        if (evalResult.isError) {
-         return JavaScriptExecutionResult(success: false, error: evalResult.stringResult);
+         return JavaScriptExecutionResult(
+             success: false, error: evalResult.stringResult);
        }
 
-       return completer.future.timeout(
-         timeoutDuration,
-         onTimeout: () => JavaScriptExecutionResult(
-           success: false,
-           error:
-               'JavaScript execution timed out after \${timeoutDuration.inMilliseconds}ms',
-           stdout: stdoutBuffer.toString(),
-           stderr: stderrBuffer.toString(),
-         ),
+       runtime.executePendingJob();
+
+       try {
+         await runtime.handlePromise(evalResult, timeout: timeoutDuration);
+       } catch (_) {
+         // Promise rejected or timed out – fall through to read __dartAgentLastResult.
+       }
+
+       final result = _readLastResultFromRuntime(
+         stderr: stderrBuffer.toString(),
+       );
+       if (result != null) return result;
+
+       return JavaScriptExecutionResult(
+         success: false,
+         error:
+             'JavaScript execution completed but no result was captured '
+             '(timeout: \${timeoutDuration.inMilliseconds}ms)',
+         stderr: stderrBuffer.toString(),
        );
      }
 
@@ -383,10 +376,50 @@ Optional flutter_js implementation guidance (not compiled in this package):
        try {
          if (raw is Map<String, dynamic>) return raw;
          if (raw is Map) return raw.cast<String, dynamic>();
+         if (raw is List && raw.isNotEmpty) {
+           final first = raw.first;
+           if (first is String && first.isNotEmpty) {
+             final decoded = jsonDecode(first);
+             if (decoded is Map<String, dynamic>) return decoded;
+             if (decoded is Map) return decoded.cast<String, dynamic>();
+           }
+         }
          if (raw is String && raw.isNotEmpty) {
            final decoded = jsonDecode(raw);
            if (decoded is Map<String, dynamic>) return decoded;
            if (decoded is Map) return decoded.cast<String, dynamic>();
+         }
+       } catch (_) {}
+       return null;
+     }
+
+     JavaScriptExecutionResult? _readLastResultFromRuntime({
+       required String stderr,
+     }) {
+       final result = runtime.evaluate(
+         'JSON.stringify(globalThis.__dartAgentLastResult ?? null)',
+       );
+       if (result.isError) return null;
+       final raw = result.stringResult;
+       if (raw.isEmpty || raw == 'null' || raw == 'undefined') return null;
+       try {
+         final decoded = jsonDecode(raw);
+         if (decoded is! Map) return null;
+         final packet = decoded.cast<String, dynamic>();
+         final type = packet['type']?.toString();
+         if (type == 'result') {
+           return JavaScriptExecutionResult(
+             success: true,
+             result: packet['result'],
+             stderr: stderr,
+           );
+         }
+         if (type == 'error') {
+           return JavaScriptExecutionResult(
+             success: false,
+             error: (packet['error'] ?? 'Unknown JavaScript error').toString(),
+             stderr: stderr,
+           );
          }
        } catch (_) {}
        return null;
@@ -408,43 +441,45 @@ Optional flutter_js implementation guidance (not compiled in this package):
   const __resultChannel = \$encodedResultChannel;
   const __script = \$encodedScript;
   const __args = \$encodedArgs;
+  globalThis.__dartAgentLastResult = null;
 
   globalThis.__dartAgentBridgePending = globalThis.__dartAgentBridgePending || {};
   globalThis.__dartAgentBridgeCall = function(channel, payload) {
-    return new Promise((resolve, reject) => {
-      const id = "req_" + Date.now() + "_" + Math.floor(Math.random() * 1000000);
-      globalThis.__dartAgentBridgePending[id] = { resolve, reject };
-      sendMessage(__bridgeChannel, JSON.stringify({ id, channel, payload: payload || {} }));
+    return new Promise(function(resolve, reject) {
+      var id = "req_" + Date.now() + "_" + Math.floor(Math.random() * 1000000);
+      globalThis.__dartAgentBridgePending[id] = { resolve: resolve, reject: reject };
+      sendMessage(__bridgeChannel, JSON.stringify({ id: id, channel: channel, payload: payload || {} }));
     });
   };
   globalThis.__dartAgentBridgeResolve = function(id, value) {
-    const pending = globalThis.__dartAgentBridgePending[id];
+    var pending = globalThis.__dartAgentBridgePending[id];
     if (!pending) return;
     delete globalThis.__dartAgentBridgePending[id];
     pending.resolve(value);
   };
   globalThis.__dartAgentBridgeReject = function(id, error) {
-    const pending = globalThis.__dartAgentBridgePending[id];
+    var pending = globalThis.__dartAgentBridgePending[id];
     if (!pending) return;
     delete globalThis.__dartAgentBridgePending[id];
     pending.reject(new Error(error || "bridge_error"));
   };
 
-  (async function () {
+  return (async function () {
     try {
       (0, eval)(__script);
-      const entry =
+      var entry =
         (typeof run === "function" && run) ||
         (typeof main === "function" && main) ||
-        (typeof default === "function" && default);
+        (typeof globalThis["default"] === "function" && globalThis["default"]);
       if (typeof entry !== "function") {
         throw new Error("Script must define a function: run(ctx) or main(ctx)");
       }
-      const result = await entry({ args: __args, bridge: { call: globalThis.__dartAgentBridgeCall } });
-      sendMessage(__resultChannel, JSON.stringify({ type: "result", result }));
+      var result = await entry({ args: __args, bridge: { call: globalThis.__dartAgentBridgeCall } });
+      globalThis.__dartAgentLastResult = { type: "result", result: result };
+      return result;
     } catch (e) {
-      const message = (e && e.stack) ? String(e.stack) : String(e);
-      sendMessage(__resultChannel, JSON.stringify({ type: "error", error: message }));
+      var message = (e && e.stack) ? String(e.stack) : String(e);
+      globalThis.__dartAgentLastResult = { type: "error", error: message };
     }
   })();
 })();
