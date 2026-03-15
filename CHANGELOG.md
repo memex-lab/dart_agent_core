@@ -1,3 +1,11 @@
+## 1.0.4
+
+- Add `DirectorySkill` support: load skills from `SKILL.md` files in a directory tree with automatic discovery and system prompt injection.
+- Add `JavaScriptRuntime` and `NodeJavaScriptRuntime` for executing JavaScript scripts with bidirectional Dart↔JS bridge communication.
+- Integrate directory skills and JavaScript execution into `StatefulAgent`.
+- Add `simple_agent_with_directory_skills_example.dart` example.
+- Update README documentation.
+
 ## 1.0.3
 
 - Add `maxTurns` protection to `StatefulAgent` to prevent potential infinite loops.
