@@ -6,7 +6,7 @@
 - Add `simple_agent_with_directory_skills_example.dart` example.
 - Update README documentation.
 
-## 1.0.3
+## 1.0.4
 
 - Add `maxTurns` protection to `StatefulAgent` to prevent potential infinite loops.
 - Add internal retry limit for empty model responses/stop reasons in `runStream`.
