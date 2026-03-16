@@ -2,7 +2,7 @@
 
 - Add examples for MiniMax, Kimi, Volcengine Seed, Zhipu GLM, and Qwen via OpenAI-compatible API.
 - Fix `OpenAIResponseTransformer` not extracting `finish_reason` when provider sends it in the same chunk as `usage` (e.g. GLM).
-- Fix double JSON encoding of `FunctionCall.arguments` in `OpenAIClient` request body.
+- Fix double JSON encoding of `FunctionCall.arguments` in `OpenAIClient` and `ResponsesClient` request body.
 
 ## 1.0.4
 

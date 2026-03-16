@@ -20,12 +20,14 @@ class ResponsesClient extends LLMClient {
   final int maxRetries;
   final int initialRetryDelayMs;
   final int maxRetryDelayMs;
+
   /// When true (default), the client derives [previous_response_id] from the last
   /// [ModelMessage.responseId] in [messages] and only sends messages after that
   /// response. When false, no automatic derivation is done; you can still pass
   /// [ModelConfig.extra]['previous_response_id'] explicitly. Disable this if you
   /// prefer to always send full history or manage previous_response_id yourself.
   final bool autoPreviousResponseId;
+
   /// Keys from [ModelConfig.extra] allowed to be forwarded to the API request body.
   /// When null (default), uses: { 'reasoning', 'caching', 'expire_at', 'thinking', 'store' }.
   /// Pass a custom set at construction to allow additional or different keys.
@@ -483,7 +485,7 @@ Map<String, dynamic> _createRequestBody(
           'type': 'function_call',
           'call_id': fc.id,
           'name': fc.name,
-          'arguments': jsonEncode(fc.arguments),
+          'arguments': fc.arguments,
         });
       }
     } else if (m is FunctionExecutionResultMessage) {
