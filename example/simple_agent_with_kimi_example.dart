@@ -17,7 +17,7 @@ void main() async {
     baseUrl: 'https://api.moonshot.cn/v1',
   );
 
-  final modelConfig = ModelConfig(model: 'kimi-k2-thinking');
+  final modelConfig = ModelConfig(model: 'kimi-k2.5');
 
   final weatherTool = Tool(
     name: 'get_weather',

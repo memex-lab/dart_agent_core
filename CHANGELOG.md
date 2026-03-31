@@ -1,3 +1,10 @@
+## 1.0.6
+
+- Fix `OpenAIClient` not handling `reasoning_content` for thinking/reasoning models (e.g. `kimi-k2-thinking`, `o1`, `deepseek-r1`).
+- Parse `reasoning_content` from both non-streaming and streaming responses into `ModelMessage.thought`.
+- Re-send `reasoning_content` in assistant messages during multi-turn conversations to satisfy API validation.
+- Add `simple_agent_with_kimi_vision_example.dart` for image analysis with Kimi.
+
 ## 1.0.5
 
 - Add examples for MiniMax, Kimi, Volcengine Seed, Zhipu GLM, and Qwen via OpenAI-compatible API.

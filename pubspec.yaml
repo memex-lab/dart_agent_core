@@ -1,6 +1,6 @@
 name: dart_agent_core
 description: A mobile-first, local-first Dart library for building stateful, tool-using AI agents with multi-provider LLM support (OpenAI, Gemini, AWS Bedrock).
-version: 1.0.5
+version: 1.0.6
 repository: https://github.com/memex-lab/dart_agent_core
 homepage: https://github.com/memex-lab/dart_agent_core
 topics:

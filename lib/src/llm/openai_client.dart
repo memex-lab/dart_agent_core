@@ -356,6 +356,9 @@ Map<String, dynamic> _createRequestBody(
     } else if (m is ModelMessage) {
       final msg = <String, dynamic>{'role': 'assistant'};
       if (m.textOutput != null) msg['content'] = m.textOutput;
+      if (m.thought != null && m.thought!.isNotEmpty) {
+        msg['reasoning_content'] = m.thought;
+      }
       if (m.functionCalls.isNotEmpty) {
         msg['tool_calls'] = m.functionCalls
             .map(
@@ -478,6 +481,7 @@ ModelMessage _parseResponse(
     final choice = choices[0];
     final message = choice['message'];
     final content = message['content'];
+    final reasoningContent = message['reasoning_content'] as String?;
     final audio = message['audio'];
     final toolCalls = message['tool_calls'] as List? ?? [];
     final finishReason = choice['finish_reason'];
@@ -531,6 +535,7 @@ ModelMessage _parseResponse(
     };
 
     return ModelMessage(
+      thought: reasoningContent,
       textOutput: content,
       audioOutputs: audioOutputs,
       functionCalls: functionCalls,
@@ -701,6 +706,15 @@ class OpenAIResponseTransformer
       if (delta['content'] != null) {
         yield ModelMessage(
           textOutput: delta['content'],
+          metadata: metadata,
+          model: modelConfig.model,
+        );
+      }
+
+      // 1.5. Handle Reasoning Content (e.g. Kimi thinking models)
+      if (delta['reasoning_content'] != null) {
+        yield ModelMessage(
+          thought: delta['reasoning_content'],
           metadata: metadata,
           model: modelConfig.model,
         );
