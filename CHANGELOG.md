@@ -1,3 +1,13 @@
+## 1.0.7
+
+- Add `baseUrl` / `region` to request log messages across all LLM clients for easier debugging.
+- Add comprehensive provider documentation for Chinese README (Kimi, Qwen, GLM, Doubao, MiniMax, Ollama, OpenRouter, Claude direct).
+- Add OpenAI-compatible and Anthropic-compatible provider sections to `doc/providers.md`.
+- Document thinking/reasoning model support (`reasoning_content` handling).
+- Update examples list in both READMEs with all provider examples.
+- Fix typo "Sendings" → "Sending" in `OpenAIClient` streaming log.
+- Fix broken `docs/` links to `doc/` in Chinese README.
+
 ## 1.0.6
 
 - Fix `OpenAIClient` not handling `reasoning_content` for thinking/reasoning models (e.g. `kimi-k2-thinking`, `o1`, `deepseek-r1`).
