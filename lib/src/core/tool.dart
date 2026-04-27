@@ -1,11 +1,11 @@
-/// 工具参数模式枚举
+/// Tool parameter mode.
 enum ToolParameterMode {
-  /// 对象参数模式
-  /// 直接传递 decodedArgs Map 给 executable
+  /// Object parameter mode.
+  /// Passes the decoded arguments Map directly to the executable.
   object,
 
-  /// 函数参数模式
-  /// 使用 Function.apply 分解位置参数和命名参数
+  /// Function parameter mode.
+  /// Uses Function.apply to dispatch positional and named parameters.
   function,
 }
 

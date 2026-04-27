@@ -472,19 +472,14 @@ class StatefulAgent {
           name: 'RunJavaScript',
           description:
               'Execute a JavaScript (.js) script from the directory skill workspace.',
-          executable:
-              (
-                String script_path,
-                String? args,
-                int? timeout_ms,
-              ) => _runJavaScriptScript(script_path, args, timeout_ms),
+          executable: (String script_path, String? args, int? timeout_ms) =>
+              _runJavaScriptScript(script_path, args, timeout_ms),
           parameters: {
             'type': 'object',
             'properties': {
               'script_path': {
                 'type': 'string',
-                'description':
-                    'Absolute path to a JavaScript file.',
+                'description': 'Absolute path to a JavaScript file.',
               },
               'args': {
                 'type': 'string',
@@ -1449,11 +1444,10 @@ class StatefulAgent {
         final result = runZoned(
           () {
             if (tool.parameterMode == ToolParameterMode.object) {
-              // 对象参数模式
-              // 直接传递 decodedArgs Map
+              // Object parameter mode: pass the decoded args Map directly
               return tool.executable!(decodedArgs);
             }
-            // 函数参数模式：使用 Function.apply 分解位置参数和命名参数
+            // Function parameter mode: use Function.apply with positional and named args
             return Function.apply(tool.executable!, positionalArgs, namedArgs);
           },
           zoneValues: {
