@@ -1447,7 +1447,15 @@ class StatefulAgent {
         }
 
         final result = runZoned(
-          () => Function.apply(tool.executable!, positionalArgs, namedArgs),
+          () {
+            if (tool.parameterMode == ToolParameterMode.object) {
+              // 对象参数模式
+              // 直接传递 decodedArgs Map
+              return tool.executable!(decodedArgs);
+            }
+            // 函数参数模式：使用 Function.apply 分解位置参数和命名参数
+            return Function.apply(tool.executable!, positionalArgs, namedArgs);
+          },
           zoneValues: {
             AgentCallToolContext.ZoneKey: AgentCallToolContext(
               state: state,
