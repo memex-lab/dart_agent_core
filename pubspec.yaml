@@ -11,7 +11,7 @@ topics:
   - flutter
 
 environment:
-  sdk: ^3.10.4
+  sdk: ^3.9.2
 
 # Add regular dependencies here.
 dependencies:
