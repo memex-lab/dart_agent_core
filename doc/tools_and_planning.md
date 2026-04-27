@@ -23,7 +23,11 @@ final weatherTool = Tool(
 );
 ```
 
-### Positional vs Named Parameters
+### Parameter Modes
+
+Tools support two parameter modes, controlled by the `parameterMode` field (defaults to `ToolParameterMode.function`).
+
+#### Function Mode (default)
 
 The library dispatches tool calls using `Function.apply()`. Parameters defined in the JSON Schema `properties` map are matched to Dart function parameters as follows:
 
@@ -51,6 +55,36 @@ final tool = Tool(
   },
 );
 ```
+
+#### Object Mode
+
+Set `parameterMode: ToolParameterMode.object` to receive the decoded arguments as a single `Map<String, dynamic>` instead of individual positional/named parameters. This bypasses `Function.apply()` and gives you full control over argument handling.
+
+```dart
+final tool = Tool(
+  name: 'search_products',
+  description: 'Search the product catalog.',
+  parameterMode: ToolParameterMode.object,
+  executable: (Map<String, dynamic> args) async {
+    final query = args['query'] as String;
+    final maxResults = args['maxResults'] as int? ?? 10;
+    return await searchProducts(query, maxResults);
+  },
+  parameters: {
+    'type': 'object',
+    'properties': {
+      'query': {'type': 'string'},
+      'maxResults': {'type': 'integer'},
+    },
+    'required': ['query'],
+  },
+);
+```
+
+Object mode is useful when:
+- You have many parameters and don't want to worry about positional ordering.
+- You want to handle missing/optional fields with your own default values.
+- You prefer to deserialize the map into a typed DTO object yourself.
 
 ### Async Tools
 

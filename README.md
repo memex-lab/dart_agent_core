@@ -19,7 +19,7 @@
 ## Features
 
 - **Multi-provider support**: Unified `LLMClient` interface for OpenAI (Chat Completions & Responses API), Google Gemini, and Anthropic Claude via AWS Bedrock.
-- **Tool use**: Wrap any Dart function as a tool with a JSON Schema definition. The agent dispatches calls, feeds results back, and loops until done. Tools can return `AgentToolResult` to carry multimodal content, metadata, or a stop signal.
+- **Tool use**: Wrap any Dart function as a tool with a JSON Schema definition. The agent dispatches calls, feeds results back, and loops until done. Tools support two parameter modes: function mode (positional/named parameter mapping via `Function.apply`) and object mode (receive all arguments as a `Map<String, dynamic>`). Tools can return `AgentToolResult` to carry multimodal content, metadata, or a stop signal.
 - **Multimodal input**: `UserMessage` accepts text, images, audio, video, and documents as content parts. Model responses can include text, images, video, and audio.
 - **Stateful sessions**: `AgentState` tracks conversation history, token usage, active skills, plan, and custom metadata. `FileStateStorage` persists state to disk as JSON.
 - **Streaming**: `runStream()` yields `StreamingEvent`s for model chunks, tool call requests/results, and retries — suitable for real-time UI updates in Flutter.
@@ -158,6 +158,29 @@ final tool = Tool(
 );
 ```
 
+Alternatively, use `parameterMode: ToolParameterMode.object` to receive all arguments as a single `Map<String, dynamic>`, bypassing positional/named parameter mapping:
+
+```dart
+final tool = Tool(
+  name: 'search_products',
+  description: 'Search the product catalog.',
+  parameterMode: ToolParameterMode.object,
+  executable: (Map<String, dynamic> args) async {
+    final query = args['query'] as String;
+    final maxResults = args['maxResults'] as int? ?? 10;
+    return await searchProducts(query, maxResults);
+  },
+  parameters: {
+    'type': 'object',
+    'properties': {
+      'query': {'type': 'string'},
+      'maxResults': {'type': 'integer'},
+    },
+    'required': ['query'],
+  },
+);
+```
+
 Tools can access the current session state via `AgentCallToolContext.current` without explicit parameters:
 
 ```dart
@@ -180,7 +203,7 @@ Future<AgentToolResult> generateChart(String query) async {
 }
 ```
 
-See [Tools & Planning doc](doc/tools_and_planning.md) for positional/named parameter mapping, async tools, and more.
+See [Tools & Planning doc](doc/tools_and_planning.md) for parameter modes, async tools, and more.
 
 ---
 

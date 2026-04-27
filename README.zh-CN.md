@@ -19,7 +19,7 @@
 ## 特性
 
 - **多 Provider 支持**：提供统一的 `LLMClient` 接口，内置支持 OpenAI（Chat Completions 与 Responses API）、Google Gemini、Anthropic Claude（直连与 AWS Bedrock）。同时，由于大量国产大模型兼容 OpenAI API，可通过 `OpenAIClient` 直接接入 Kimi、通义千问、智谱 GLM、Ollama 等；通过 `ResponsesClient` 接入火山引擎豆包；通过 `ClaudeClient` 接入 MiniMax。
-- **工具调用**：将任意 Dart 函数封装为带 JSON Schema 的工具。Agent 会自动发起调用、回填结果并循环执行直到任务完成。工具可返回 `AgentToolResult`，携带多模态内容、元数据或停止信号。
+- **工具调用**：将任意 Dart 函数封装为带 JSON Schema 的工具。Agent 会自动发起调用、回填结果并循环执行直到任务完成。工具支持两种参数模式：函数模式（通过 `Function.apply` 进行位置参数/命名参数映射）和对象模式（将所有参数作为 `Map<String, dynamic>` 直接传入）。工具可返回 `AgentToolResult`，携带多模态内容、元数据或停止信号。
 - **多模态输入**：`UserMessage` 支持文本、图片、音频、视频和文档等内容片段。模型输出可包含文本、图片、视频和音频。
 - **有状态会话**：`AgentState` 追踪对话历史、Token 使用量、激活技能、计划与自定义元数据。`FileStateStorage` 可将状态以 JSON 持久化到磁盘。
 - **流式输出**：`runStream()` 会产出 `StreamingEvent`，包含模型分片、工具调用请求/结果、重试等事件，适合 Flutter 实时 UI。
@@ -256,6 +256,29 @@ final tool = Tool(
 );
 ```
 
+也可以使用 `parameterMode: ToolParameterMode.object`，将所有参数作为一个 `Map<String, dynamic>` 直接传入，跳过位置参数/命名参数的映射：
+
+```dart
+final tool = Tool(
+  name: 'search_products',
+  description: 'Search the product catalog.',
+  parameterMode: ToolParameterMode.object,
+  executable: (Map<String, dynamic> args) async {
+    final query = args['query'] as String;
+    final maxResults = args['maxResults'] as int? ?? 10;
+    return await searchProducts(query, maxResults);
+  },
+  parameters: {
+    'type': 'object',
+    'properties': {
+      'query': {'type': 'string'},
+      'maxResults': {'type': 'integer'},
+    },
+    'required': ['query'],
+  },
+);
+```
+
 工具可通过 `AgentCallToolContext.current` 访问当前会话状态，无需显式传参：
 
 ```dart
@@ -278,7 +301,7 @@ Future<AgentToolResult> generateChart(String query) async {
 }
 ```
 
-关于位置参数/命名参数映射、异步工具等细节，见 [Tools & Planning 文档](doc/tools_and_planning.md)。
+关于参数模式、异步工具等细节，见 [Tools & Planning 文档](doc/tools_and_planning.md)。
 
 ---
 
