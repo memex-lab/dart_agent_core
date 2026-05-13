@@ -379,6 +379,14 @@ class StreamingEvent {
 class ModelMessage extends LLMMessage {
   final String? thought;
   final String? thoughtSignature; // Optional verification signature
+  /// Provider-native assistant content blocks.
+  ///
+  /// Some providers, notably Anthropic Messages, require exact block-level
+  /// round-tripping for content such as `thinking`, `redacted_thinking`, and
+  /// interleaved `tool_use` blocks. The flattened fields below remain the
+  /// provider-neutral view used by agents, while this field preserves the raw
+  /// provider order for clients that need it.
+  final List<Map<String, dynamic>> contentBlocks;
   final List<FunctionCall> functionCalls;
   final String? textOutput;
   final List<ModelImagePart> imageOutputs;
@@ -394,6 +402,7 @@ class ModelMessage extends LLMMessage {
   ModelMessage({
     this.thought,
     this.thoughtSignature,
+    this.contentBlocks = const [],
     this.functionCalls = const [],
     this.textOutput,
     this.imageOutputs = const [],
@@ -412,6 +421,8 @@ class ModelMessage extends LLMMessage {
     'role': 'assistant',
     if (thought != null) 'thought': thought,
     if (thoughtSignature != null) 'thoughtSignature': thoughtSignature,
+    if (contentBlocks.isNotEmpty)
+      'contentBlocks': contentBlocks.map((e) => Map.of(e)).toList(),
     if (textOutput != null) 'textOutput': textOutput,
     if (functionCalls.isNotEmpty)
       'functionCalls': functionCalls.map((e) => e.toJson()).toList(),
@@ -433,6 +444,11 @@ class ModelMessage extends LLMMessage {
     return ModelMessage(
       thought: json['thought'] as String?,
       thoughtSignature: json['thoughtSignature'] as String?,
+      contentBlocks:
+          (json['contentBlocks'] as List?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          [],
       textOutput: json['textOutput'] as String?,
       functionCalls:
           (json['functionCalls'] as List?)

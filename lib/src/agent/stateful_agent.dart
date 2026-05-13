@@ -885,6 +885,7 @@ class StatefulAgent {
 
         final StringBuffer aggregatedText = StringBuffer();
         final StringBuffer aggregatedThought = StringBuffer();
+        final List<Map<String, dynamic>> aggregatedContentBlocks = [];
         final List<FunctionCall> aggregatedTools = [];
         final List<ModelImagePart> imageOutputs = [];
         final List<ModelVideoPart> videoOutputs = [];
@@ -920,6 +921,9 @@ class StatefulAgent {
               }
               if (chunk.functionCalls.isNotEmpty) {
                 aggregatedTools.addAll(chunk.functionCalls);
+              }
+              if (chunk.contentBlocks.isNotEmpty) {
+                aggregatedContentBlocks.addAll(chunk.contentBlocks);
               }
               if (chunk.imageOutputs.isNotEmpty) {
                 imageOutputs.addAll(chunk.imageOutputs);
@@ -975,6 +979,7 @@ class StatefulAgent {
                 finalUsage = null;
                 finalMetadata = null;
                 aggregatedThought.clear();
+                aggregatedContentBlocks.clear();
                 thoughtSignature = null;
                 controller?.publish(LLMRetryingEvent(this, retryReason));
               }
@@ -1001,6 +1006,9 @@ class StatefulAgent {
           }
           if (fullMessage.functionCalls.isNotEmpty) {
             aggregatedTools.addAll(fullMessage.functionCalls);
+          }
+          if (fullMessage.contentBlocks.isNotEmpty) {
+            aggregatedContentBlocks.addAll(fullMessage.contentBlocks);
           }
           if (fullMessage.imageOutputs.isNotEmpty) {
             imageOutputs.addAll(fullMessage.imageOutputs);
@@ -1091,6 +1099,7 @@ class StatefulAgent {
               ? aggregatedText.toString()
               : null,
           functionCalls: aggregatedTools,
+          contentBlocks: aggregatedContentBlocks,
           imageOutputs: imageOutputs,
           videoOutputs: videoOutputs,
           audioOutputs: audioOutputs,
