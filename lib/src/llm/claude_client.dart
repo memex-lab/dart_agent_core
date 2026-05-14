@@ -222,19 +222,26 @@ class ClaudeClient extends LLMClient {
     _ClaudeStreamParser parser,
     StreamController<StreamingMessage> controller,
   ) {
-    final buffer = StringBuffer();
+    String? eventType;
 
     stream
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen(
           (line) {
-            if (line.startsWith('data: ')) {
+            if (line.isEmpty) {
+              eventType = null;
+            } else if (line.startsWith('data: ')) {
               final data = line.substring(6);
               if (data == '[DONE]') return;
 
               try {
                 final json = jsonDecode(data) as Map<String, dynamic>;
+                if (eventType == 'error' || json['type'] == 'error') {
+                  controller.addError(_createStreamError(json));
+                  return;
+                }
+
                 final message = parser.parse(json);
                 if (message != null) {
                   controller.add(StreamingMessage(modelMessage: message));
@@ -243,14 +250,11 @@ class ClaudeClient extends LLMClient {
                 _logger.warning('Error parsing SSE chunk: $e, data: $data');
               }
             } else if (line.startsWith('event: ')) {
-              // Event type hint — parser handles type from the data payload
+              eventType = line.substring(7);
             } else if (line.startsWith('error: ')) {
-              buffer.clear();
               try {
                 final errorData = jsonDecode(line.substring(7));
-                controller.addError(
-                  Exception('Claude Stream Error: ${errorData['message']}'),
-                );
+                controller.addError(_createStreamError(errorData));
               } catch (_) {
                 controller.addError(Exception('Claude Stream Error: $line'));
               }
@@ -264,6 +268,17 @@ class ClaudeClient extends LLMClient {
             controller.close();
           },
         );
+  }
+
+  Exception _createStreamError(Map<String, dynamic> payload) {
+    final error = payload['error'];
+    if (error is Map && error['message'] != null) {
+      return Exception('Claude Stream Error: ${error['message']}');
+    }
+    if (payload['message'] != null) {
+      return Exception('Claude Stream Error: ${payload['message']}');
+    }
+    return Exception('Claude Stream Error: $payload');
   }
 
   Map<String, dynamic> _createRequestBody(
@@ -313,65 +328,16 @@ class ClaudeClient extends LLMClient {
                 'content': content.isNotEmpty ? content : '',
               };
             } else if (m is ModelMessage) {
-              final content = <Map<String, dynamic>>[];
-
-              if (m.thought != null &&
-                  m.thought!.isNotEmpty &&
-                  m.thoughtSignature != null) {
-                content.add({
-                  'type': 'thinking',
-                  'thinking': m.thought,
-                  'signature': m.thoughtSignature,
-                });
-              }
-
-              if (m.textOutput != null) {
-                content.add({'type': 'text', 'text': m.textOutput});
-              }
-              if (m.functionCalls.isNotEmpty) {
-                final validCalls = <FunctionCall>[];
-                for (final call in m.functionCalls) {
-                  if (call.id.isNotEmpty) {
-                    validCalls.add(call);
-                  } else if (validCalls.isNotEmpty) {
-                    final previous = validCalls.last;
-                    validCalls[validCalls.length - 1] = FunctionCall(
-                      id: previous.id,
-                      name: previous.name,
-                      arguments: previous.arguments + call.arguments,
-                    );
-                  }
-                }
-
-                for (final call in validCalls) {
-                  dynamic input;
-                  if (call.arguments.isEmpty) {
-                    input = {};
-                  } else {
-                    try {
-                      input = jsonDecode(call.arguments);
-                    } catch (e) {
-                      _logger.warning(
-                        'Error decoding tool input: ${call.arguments} - $e',
-                      );
-                      input = {};
-                    }
-                  }
-                  content.add({
-                    'type': 'tool_use',
-                    'id': call.id,
-                    'name': call.name,
-                    'input': input,
-                  });
-                }
-              }
+              final content = m.contentBlocks.isNotEmpty
+                  ? _copyContentBlocks(m.contentBlocks)
+                  : _buildAssistantContent(m);
               return {
                 'role': 'assistant',
                 'content': content.isNotEmpty ? content : '',
               };
             } else if (m is FunctionExecutionResultMessage) {
               final content = m.results.map((r) {
-                return {
+                final result = {
                   'type': 'tool_result',
                   'tool_use_id': r.id,
                   'content': r.content
@@ -394,6 +360,10 @@ class ClaudeClient extends LLMClient {
                       .where((e) => e != null)
                       .toList(),
                 };
+                if (r.isError) {
+                  result['is_error'] = true;
+                }
+                return result;
               }).toList();
 
               return {'role': 'user', 'content': content};
@@ -464,6 +434,84 @@ class ClaudeClient extends LLMClient {
     return body;
   }
 
+  List<Map<String, dynamic>> _buildAssistantContent(ModelMessage message) {
+    final content = <Map<String, dynamic>>[];
+
+    if (message.thought != null &&
+        message.thought!.isNotEmpty &&
+        message.thoughtSignature != null) {
+      content.add({
+        'type': 'thinking',
+        'thinking': message.thought,
+        'signature': message.thoughtSignature,
+      });
+    }
+
+    if (message.textOutput != null) {
+      content.add({'type': 'text', 'text': message.textOutput});
+    }
+    if (message.functionCalls.isNotEmpty) {
+      final validCalls = <FunctionCall>[];
+      for (final call in message.functionCalls) {
+        if (call.id.isNotEmpty) {
+          validCalls.add(call);
+        } else if (validCalls.isNotEmpty) {
+          final previous = validCalls.last;
+          validCalls[validCalls.length - 1] = FunctionCall(
+            id: previous.id,
+            name: previous.name,
+            arguments: previous.arguments + call.arguments,
+          );
+        }
+      }
+
+      for (final call in validCalls) {
+        content.add({
+          'type': 'tool_use',
+          'id': call.id,
+          'name': call.name,
+          'input': _decodeToolInput(call.arguments),
+        });
+      }
+    }
+
+    return content;
+  }
+
+  dynamic _decodeToolInput(String arguments) {
+    if (arguments.isEmpty) {
+      return {};
+    }
+    try {
+      return jsonDecode(arguments);
+    } catch (e) {
+      _logger.warning('Error decoding tool input: $arguments - $e');
+      return {};
+    }
+  }
+
+  List<Map<String, dynamic>> _copyContentBlocks(
+    List<Map<String, dynamic>> blocks,
+  ) {
+    return blocks.map((block) => _deepCopyMap(block)).toList();
+  }
+
+  Map<String, dynamic> _deepCopyMap(Map<String, dynamic> map) {
+    return map.map((key, value) => MapEntry(key, _deepCopyValue(value)));
+  }
+
+  dynamic _deepCopyValue(dynamic value) {
+    if (value is Map) {
+      return value.map(
+        (key, child) => MapEntry(key.toString(), _deepCopyValue(child)),
+      );
+    }
+    if (value is List) {
+      return value.map(_deepCopyValue).toList();
+    }
+    return value;
+  }
+
   ModelMessage _parseResponse(
     Map<String, dynamic> data,
     ModelConfig modelConfig,
@@ -475,11 +523,15 @@ class ClaudeClient extends LLMClient {
     final content = data['content'] as List?;
     String text = '';
     final functionCalls = <FunctionCall>[];
+    final contentBlocks = <Map<String, dynamic>>[];
     String? thought;
     String? thoughtSignature;
 
     if (content != null) {
       for (final part in content) {
+        if (part is Map) {
+          contentBlocks.add(Map<String, dynamic>.from(part));
+        }
         if (part['type'] == 'text') {
           text += part['text'] ?? '';
         } else if (part['type'] == 'tool_use') {
@@ -505,6 +557,7 @@ class ClaudeClient extends LLMClient {
 
     return ModelMessage(
       textOutput: text,
+      contentBlocks: contentBlocks,
       functionCalls: functionCalls,
       model: modelConfig.model,
       stopReason: data['stop_reason'],
@@ -529,9 +582,14 @@ class ClaudeClient extends LLMClient {
 
 class _ClaudeStreamParser {
   final ModelConfig modelConfig;
+  String? _currentBlockType;
+  Map<String, dynamic>? _currentRawBlock;
   String? _currentToolId;
   String? _currentToolName;
   final StringBuffer _currentToolJson = StringBuffer();
+  final StringBuffer _currentText = StringBuffer();
+  final StringBuffer _currentThinking = StringBuffer();
+  String? _currentThinkingSignature;
 
   int _promptTokens = 0;
   int _completionTokens = 0;
@@ -545,6 +603,11 @@ class _ClaudeStreamParser {
 
     if (type == 'content_block_start') {
       final start = chunk['content_block'];
+      _currentBlockType = start['type'] as String?;
+      _currentRawBlock = Map<String, dynamic>.from(start as Map);
+      _currentText.clear();
+      _currentThinking.clear();
+      _currentThinkingSignature = null;
       if (start['type'] == 'tool_use') {
         _currentToolId = start['id'];
         _currentToolName = start['name'];
@@ -559,18 +622,21 @@ class _ClaudeStreamParser {
     } else if (type == 'content_block_delta') {
       final delta = chunk['delta'];
       if (delta['type'] == 'text_delta') {
+        _currentText.write(delta['text'] ?? '');
         return ModelMessage(
           textOutput: delta['text'],
           model: modelConfig.model,
           usage: _currentUsage(),
         );
       } else if (delta['type'] == 'thinking_delta') {
+        _currentThinking.write(delta['thinking'] ?? '');
         return ModelMessage(
           thought: delta['thinking'],
           model: modelConfig.model,
           usage: _currentUsage(),
         );
       } else if (delta['type'] == 'signature_delta') {
+        _currentThinkingSignature = delta['signature'];
         return ModelMessage(
           thoughtSignature: delta['signature'],
           model: modelConfig.model,
@@ -580,21 +646,7 @@ class _ClaudeStreamParser {
         _currentToolJson.write(delta['partial_json']);
       }
     } else if (type == 'content_block_stop') {
-      if (_currentToolId != null) {
-        final toolCall = FunctionCall(
-          id: _currentToolId!,
-          name: _currentToolName!,
-          arguments: _currentToolJson.toString(),
-        );
-        _currentToolId = null;
-        _currentToolName = null;
-        _currentToolJson.clear();
-        return ModelMessage(
-          functionCalls: [toolCall],
-          model: modelConfig.model,
-          usage: _currentUsage(),
-        );
-      }
+      return _finishCurrentBlock();
     } else if (type == 'message_start') {
       final message = chunk['message'];
       if (message != null && message['usage'] != null) {
@@ -641,5 +693,62 @@ class _ClaudeStreamParser {
       thoughtToken: _thoughtTokens,
       model: modelConfig.model,
     );
+  }
+
+  ModelMessage? _finishCurrentBlock() {
+    final blockType = _currentBlockType;
+    if (blockType == null) {
+      return null;
+    }
+
+    final block = Map<String, dynamic>.from(_currentRawBlock ?? {});
+    FunctionCall? toolCall;
+
+    if (blockType == 'text') {
+      block['text'] = _currentText.toString();
+    } else if (blockType == 'thinking') {
+      block['thinking'] = _currentThinking.toString();
+      if (_currentThinkingSignature != null) {
+        block['signature'] = _currentThinkingSignature;
+      }
+    } else if (blockType == 'tool_use') {
+      final arguments = _currentToolJson.toString();
+      toolCall = FunctionCall(
+        id: _currentToolId!,
+        name: _currentToolName!,
+        arguments: arguments,
+      );
+      block['input'] = _parseToolInput(arguments);
+    }
+
+    _clearCurrentBlock();
+    return ModelMessage(
+      contentBlocks: [block],
+      functionCalls: toolCall == null ? const [] : [toolCall],
+      model: modelConfig.model,
+      usage: _currentUsage(),
+    );
+  }
+
+  void _clearCurrentBlock() {
+    _currentBlockType = null;
+    _currentRawBlock = null;
+    _currentToolId = null;
+    _currentToolName = null;
+    _currentToolJson.clear();
+    _currentText.clear();
+    _currentThinking.clear();
+    _currentThinkingSignature = null;
+  }
+
+  dynamic _parseToolInput(String input) {
+    if (input.isEmpty) {
+      return {};
+    }
+    try {
+      return jsonDecode(input);
+    } catch (_) {
+      return {};
+    }
   }
 }
