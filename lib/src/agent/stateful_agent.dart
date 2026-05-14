@@ -243,15 +243,28 @@ class CallLLMParams {
   });
 }
 
+/// Result of [SystemCallback], containing the potentially modified system message,
+/// tools, and request messages.
+class SystemCallbackResult {
+  final SystemMessage? systemMessage;
+  final List<Tool> tools;
+  final List<LLMMessage> requestMessages;
+
+  SystemCallbackResult({
+    required this.systemMessage,
+    required this.tools,
+    required this.requestMessages,
+  });
+}
+
 /// Callback type for intercepting and modifying system_message, tools, and request_messages
 /// before each LLM call. Receives the StatefulAgent instance as the first argument.
-typedef SystemCallback =
-    Future<(SystemMessage?, List<Tool>, List<LLMMessage>)> Function(
-      StatefulAgent agent,
-      SystemMessage? systemMessage,
-      List<Tool> tools,
-      List<LLMMessage> requestMessages,
-    );
+typedef SystemCallback = Future<SystemCallbackResult> Function(
+  StatefulAgent agent,
+  SystemMessage? systemMessage,
+  List<Tool> tools,
+  List<LLMMessage> requestMessages,
+);
 
 /// A stateful AI agent that orchestrates LLM calls, tool execution,
 /// skill management, and context compression.
@@ -774,19 +787,15 @@ class StatefulAgent {
         // System callback interception point
         if (systemCallback != null) {
           try {
-            final (
-              newSystemMessage,
-              newTools,
-              newRequestMessages,
-            ) = await systemCallback!(
+            final result = await systemCallback!(
               this,
               systemMessage,
               toolsCopy,
               requestMessages,
             );
-            systemMessage = newSystemMessage;
-            toolsCopy = newTools;
-            requestMessages = newRequestMessages;
+            systemMessage = result.systemMessage;
+            toolsCopy = result.tools;
+            requestMessages = result.requestMessages;
           } catch (e) {
             _logger.warning(
               '[$name] system_callback execution error: $e. Using original values.',
