@@ -584,3 +584,9 @@ final agent = StatefulAgent(
 ## 贡献
 
 欢迎提交 Issue 和 Pull Request。对于较大改动，建议先开 Issue 讨论。
+
+---
+
+## 关于
+
+`dart_agent_core` 由 [Memex Lab](https://memexlab.ai) 开发维护。访问我们的主页了解更多项目和动态。

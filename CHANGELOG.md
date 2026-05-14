@@ -8,6 +8,8 @@
 - Add `ToolParameterMode.object` for tools: receive all arguments as a single `Map<String, dynamic>` instead of positional/named parameter mapping via `Function.apply`.
 - Update tool documentation in README, README.zh-CN, and `doc/tools_and_planning.md` with object mode usage and examples.
 
+Full changelog also available at [memexlab.ai/changelog](https://www.memexlab.ai/changelog).
+
 ## 1.0.7
 
 - Add `baseUrl` / `region` to request log messages across all LLM clients for easier debugging.

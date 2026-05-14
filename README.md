@@ -486,3 +486,9 @@ See the [`example/`](example) directory:
 ## Contributing
 
 Bug reports and pull requests are welcome. Please open an issue first for significant changes.
+
+---
+
+## About
+
+`dart_agent_core` is developed by [Memex Lab](https://memexlab.ai). Visit our homepage for more projects and updates.
