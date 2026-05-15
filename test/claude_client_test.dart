@@ -107,6 +107,56 @@ void main() {
       expect(toolResult['is_error'], isTrue);
     });
 
+    test(
+      'legacy thought without content blocks is sent as thinking block',
+      () async {
+        final adapter = _CaptureAdapter([
+          (_) => _jsonResponse({
+            'content': [
+              {'type': 'text', 'text': 'ok'},
+            ],
+            'stop_reason': 'end_turn',
+            'usage': {'input_tokens': 1, 'output_tokens': 1},
+          }),
+        ]);
+        final client = ClaudeClient(
+          apiKey: 'test-key',
+          client: Dio()..httpClientAdapter = adapter,
+        );
+
+        await client.generate([
+          UserMessage.text('开始'),
+          ModelMessage(
+            model: 'claude-test',
+            thought: '需要先读取文件',
+            textOutput: '我会调用工具。',
+            functionCalls: [
+              FunctionCall(
+                id: 'toolu_1',
+                name: 'Read',
+                arguments: '{"path":"a.md"}',
+              ),
+            ],
+          ),
+        ], modelConfig: ModelConfig(model: 'claude-test'));
+
+        final request =
+            jsonDecode(adapter.requests.single as String)
+                as Map<String, dynamic>;
+        final assistantMessage = request['messages'][1] as Map<String, dynamic>;
+        expect(assistantMessage['content'], [
+          {'type': 'thinking', 'thinking': '需要先读取文件'},
+          {'type': 'text', 'text': '我会调用工具。'},
+          {
+            'type': 'tool_use',
+            'id': 'toolu_1',
+            'name': 'Read',
+            'input': {'path': 'a.md'},
+          },
+        ]);
+      },
+    );
+
     test('stream 会产出完整有序 content blocks', () async {
       final adapter = _CaptureAdapter([
         (_) => _streamResponse([

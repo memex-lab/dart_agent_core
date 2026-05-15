@@ -1,3 +1,8 @@
+## Unreleased
+
+- Fix legacy `ModelMessage.thought` round-tripping in Claude and Bedrock Claude
+  fallback request construction when provider-native `contentBlocks` are absent.
+
 ## 1.0.9
 
 - **BREAKING**: Replace `SystemCallback` return type from Dart Record `(SystemMessage?, List<Tool>, List<LLMMessage>)` to `SystemCallbackResult` class for broader SDK compatibility and clearer semantics. Callers using `systemCallback` must update to access `.systemMessage`, `.tools`, `.requestMessages` properties instead of positional destructuring.
