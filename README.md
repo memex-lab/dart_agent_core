@@ -205,6 +205,20 @@ Future<AgentToolResult> generateChart(String query) async {
 
 See [Tools & Planning doc](doc/tools_and_planning.md) for parameter modes, async tools, and more.
 
+### You.com Search API tool example
+
+For web-grounded agents, see `example/simple_agent_with_you_search_example.dart`.
+
+- Uses `GET https://api.you.com/v1/agents/search`
+- Supports `YDC_API_KEY` via env var (optional for the free 100 searches/day tier)
+- Handles empty queries, non-200 responses, and no-results fallback
+
+Run:
+
+```bash
+dart run example/simple_agent_with_you_search_example.dart
+```
+
 ---
 
 ## Skill System
