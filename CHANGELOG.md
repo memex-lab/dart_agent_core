@@ -2,6 +2,10 @@
 
 - Fix legacy `ModelMessage.thought` round-tripping in Claude and Bedrock Claude
   fallback request construction when provider-native `contentBlocks` are absent.
+- Preserve explicit empty `reasoning_content` for OpenAI-compatible thinking
+  models and add a DeepSeek V4 legacy tool-call fallback.
+- Align Gemini function-call replay with the SDK shape by using the function
+  name in `functionResponse.name` and preserving optional function call IDs.
 
 ## 1.0.9
 

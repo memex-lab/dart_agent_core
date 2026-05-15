@@ -450,7 +450,8 @@ Map<String, dynamic> _createRequestBody(
 
         parts.add({
           'functionResponse': {
-            'name': res.id,
+            'name': res.name,
+            if (res.id != res.name) 'id': res.id,
             'response': {'content': textContent},
             if (partsList.isNotEmpty) 'parts': partsList,
           },
@@ -562,7 +563,7 @@ ModelMessage? _parseResponse(
         final fc = part['functionCall'];
         functionCalls.add(
           FunctionCall(
-            id: fc['name'],
+            id: fc['id'] ?? fc['name'],
             name: fc['name'],
             arguments: jsonEncode(fc['args'] ?? {}),
           ),

@@ -356,8 +356,9 @@ Map<String, dynamic> _createRequestBody(
     } else if (m is ModelMessage) {
       final msg = <String, dynamic>{'role': 'assistant'};
       if (m.textOutput != null) msg['content'] = m.textOutput;
-      if (m.thought != null && m.thought!.isNotEmpty) {
-        msg['reasoning_content'] = m.thought;
+      if (m.thought != null ||
+          _requiresReasoningContentForToolCalls(modelConfig, m)) {
+        msg['reasoning_content'] = m.thought ?? '';
       }
       if (m.functionCalls.isNotEmpty) {
         msg['tool_calls'] = m.functionCalls
@@ -467,6 +468,21 @@ Map<String, dynamic> _createRequestBody(
   }
 
   return body;
+}
+
+bool _requiresReasoningContentForToolCalls(
+  ModelConfig modelConfig,
+  ModelMessage message,
+) {
+  if (message.functionCalls.isEmpty) return false;
+
+  final thinking = modelConfig.extra?['thinking'];
+  if (thinking is Map) {
+    return thinking['type'] != 'disabled';
+  }
+
+  final model = modelConfig.model.toLowerCase();
+  return model.contains('deepseek-v4');
 }
 
 ModelMessage _parseResponse(
