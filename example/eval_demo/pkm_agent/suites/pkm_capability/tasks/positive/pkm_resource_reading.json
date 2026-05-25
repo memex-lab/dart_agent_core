@@ -1,0 +1,30 @@
+{
+  "id": "pkm_resource_reading",
+  "description": "Reading note: should write under Resources/.",
+  "trials_per_run": 2,
+  "timeout_seconds": 180,
+  "metadata": {
+    "failure_bucket": "route_to_resources",
+    "difficulty": "medium"
+  },
+  "input": {
+    "prompt": "Process the following user fact for PKM organization.\n\nfact_id: fact_pkm_002\n\ntext:\nFrom \"Designing Data-Intensive Applications\" — log-structured storage engines optimize writes by sequencing them, but pay later in compaction.\n"
+  },
+  "reference_solution": {
+    "expected_outcome": {
+      "updated_insight": true,
+      "skipped": false
+    },
+    "source": "manual"
+  },
+  "graders": [
+    {
+      "name": "pkm_organized",
+      "config": {
+        "fact_id": "fact_pkm_002",
+        "buckets": ["Resources/"],
+        "must_contain": ["log-structured"]
+      }
+    }
+  ]
+}

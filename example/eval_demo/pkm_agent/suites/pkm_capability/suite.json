@@ -1,0 +1,7 @@
+{
+  "name": "pkm_agent_demo",
+  "agent_name": "pkm_agent_demo",
+  "kind": "mixed",
+  "requireReferenceSolution": true,
+  "taskPassThreshold": 1.0
+}
