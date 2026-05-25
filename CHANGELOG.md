@@ -1,3 +1,20 @@
+## 1.0.11
+
+- Add evaluation subsystem under `package:dart_agent_core/eval.dart` (separate entry point — no impact on existing `dart_agent_core.dart` consumers).
+  - Core: `EvalTask` / `EvalSuite` / `EvalRunner` / `Trial` / `Outcome` / `Transcript` / `EvalEnvironment` / `AgentHarnessFactory`.
+  - Graders: `CodeGrader` (rule / script / classification), `ModelGrader` (LLM-as-judge with required `Unknown` escape hatch), `HumanGrader`.
+  - LLM record / replay: hash-based `RecordingLLMClient` / `ReplayLLMClient`, `FileRecordingStore`, per-trial `cacheSalt` so `trialsPerRun > 1` does not collapse into a single cache entry.
+  - Rate limiting: `RpmRateLimitGate`, `TpmRateLimitGate`, `NoopRateLimitGate` — decoupled from concurrency, replay hits skip the gate.
+  - Metrics: `pass@k` (Codex unbiased estimator), `pass^k` (empirical), `ClassificationMetrics`, bucket pass rates, grader means.
+  - Reporting: `FileReportStore`, `diffRunReports`, markdown + JSON output.
+  - Suite health: `SuiteHealthAnalyzer` — graduation candidates and broken-task detection across runs.
+  - Calibration: `JudgeCalibrator` — Spearman / Pearson / MAE against a human-labeled golden set.
+  - Loaders: code-defined suites and JSON file-tree-defined suites via `loadEvalSuiteFromDir` + `GraderRegistry`.
+  - Observability: `JsonlTraceExporter`, `CompositeTraceExporter`, and built-in `LangfuseTraceExporter` (background batched ingestion to Langfuse cloud or self-hosted, exponential-backoff retries, schema aligned with langfuse v4).
+- Add `bin/transcripts.dart` CLI: `list` / `show` / `diff` / `export` for persisted run reports, runnable via `dart run dart_agent_core:transcripts`.
+- Add three runnable end-to-end demos under `example/eval_demo/`: `calculator/` and `card_agent/` (code-defined suites), `pkm_agent/` (file-defined suite with fixtures); plus a 130-line self-contained `example/min_eval/main.dart`.
+- Add `doc/eval-guide.md` (English) and `doc/eval-guide.zh-CN.md` covering core concepts, components, two suite definition styles, three grader styles, metrics, record/replay, Langfuse export, cross-run health, judge calibration, CLI, and an API cheat sheet. Linked from each README.
+
 ## 1.0.10
 
 - Update README and documentation.
