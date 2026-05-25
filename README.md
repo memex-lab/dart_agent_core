@@ -480,6 +480,7 @@ See the [`example/`](example) directory:
 - [LLM Providers & Configuration](doc/providers.md) — OpenAI, Gemini, Bedrock setup, ModelConfig, proxy support
 - [Tools & Planning](doc/tools_and_planning.md) — Tool creation, parameter mapping, AgentToolResult, skills, sub-agents, planner
 - [State & Memory Management](doc/state_and_memory.md) — AgentState, FileStateStorage, context compression, episodic memory
+- [Evaluating Agents](doc/eval-guide.md) — Anthropic-aligned eval subsystem: tasks, graders, suites, pass@k / pass^k, record/replay, Langfuse export, cross-run health
 
 ---
 

@@ -1,0 +1,30 @@
+{
+  "id": "pkm_area_health",
+  "description": "Long-term health habit: should write under Areas/.",
+  "trials_per_run": 2,
+  "timeout_seconds": 180,
+  "metadata": {
+    "failure_bucket": "route_to_areas",
+    "difficulty": "easy"
+  },
+  "input": {
+    "prompt": "Process the following user fact for PKM organization.\n\nfact_id: fact_pkm_001\n\ntext:\nStarted doing 10 minutes of daily mobility work after noticing my back tightness. Want to make this a habit.\n"
+  },
+  "reference_solution": {
+    "expected_outcome": {
+      "updated_insight": true,
+      "skipped": false
+    },
+    "source": "manual"
+  },
+  "graders": [
+    {
+      "name": "pkm_organized",
+      "config": {
+        "fact_id": "fact_pkm_001",
+        "buckets": ["Areas/"],
+        "must_contain": ["mobility"]
+      }
+    }
+  ]
+}
