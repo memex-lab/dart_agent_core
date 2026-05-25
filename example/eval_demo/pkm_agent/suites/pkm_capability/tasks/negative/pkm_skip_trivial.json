@@ -1,0 +1,23 @@
+{
+  "id": "pkm_skip_trivial",
+  "description": "Trivial \"good morning\" input: should be skipped, not persisted.",
+  "trials_per_run": 2,
+  "timeout_seconds": 120,
+  "metadata": {
+    "failure_bucket": "skip_trivial",
+    "difficulty": "easy"
+  },
+  "input": {
+    "prompt": "Process the following user fact for PKM organization.\n\nfact_id: fact_pkm_004\n\ntext:\ngood morning ☀\n"
+  },
+  "reference_solution": {
+    "expected_outcome": {
+      "updated_insight": false,
+      "skipped": true
+    },
+    "source": "manual"
+  },
+  "graders": [
+    {"name": "pkm_skipped"}
+  ]
+}

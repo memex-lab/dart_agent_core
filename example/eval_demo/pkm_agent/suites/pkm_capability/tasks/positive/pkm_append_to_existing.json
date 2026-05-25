@@ -1,0 +1,34 @@
+{
+  "id": "pkm_append_to_existing",
+  "description": "Existing Areas/Sleep.md: should read THEN append, not overwrite.",
+  "trials_per_run": 2,
+  "timeout_seconds": 180,
+  "metadata": {
+    "failure_bucket": "append_to_existing",
+    "difficulty": "hard"
+  },
+  "input": {
+    "prompt": "Process the following user fact for PKM organization.\n\nfact_id: fact_pkm_003\n\ntext:\nSlept ~6.5h again. Energy crashed at 3pm. Need to get to bed earlier this week.\n",
+    "fixture_files": {
+      "Areas/Sleep.md": "# Sleep\n\nA running log of my sleep quality and what affects it.\n\nfact_id: fact_pkm_baseline\n- 2025-08-01: 7.5h, no caffeine after 2pm — felt good.\n- 2025-08-15: 5h, late call with EU team — terrible day after.\n"
+    }
+  },
+  "reference_solution": {
+    "expected_outcome": {
+      "updated_insight": true,
+      "skipped": false
+    },
+    "source": "manual"
+  },
+  "graders": [
+    {
+      "name": "pkm_organized",
+      "config": {
+        "fact_id": "fact_pkm_003",
+        "buckets": ["Areas/"],
+        "must_contain": ["fact_pkm_baseline", "6.5"]
+      }
+    },
+    {"name": "read_before_write"}
+  ]
+}
