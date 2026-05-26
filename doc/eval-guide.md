@@ -43,10 +43,11 @@ Strictly aligned with Anthropic's terminology:
 | **Agent Harness** | `AgentHarnessFactory` / `AgentHarnessSession` | The scaffolding that lets a model behave as an agent (you provide it) |
 | **Evaluation Suite** | `EvalSuite` | A set of tasks targeting one capability or behavior |
 
-Design principle (Anthropic Step 5): **default to grading the Outcome,
-not the Transcript**. "flight booked" should be checked against the
-database, not against whether the agent said "Your flight has been
-booked".
+Design principle (Anthropic Step 5): **grade the right evidence**. For
+final-world-state questions, use the `Outcome` ("flight booked" should
+be checked against the database, not against whether the agent said it
+was booked). For process questions, use the `Transcript` (for example,
+whether the agent read before writing or called a required tool).
 
 </br>
 
@@ -174,17 +175,25 @@ abstract class AgentHarnessSession {
 The harness is the **only** layer that knows what your agent looks
 like: it instantiates `StatefulAgent`, registers `Tool[]`, calls
 `agent.run([UserMessage(task.input['prompt'])])`, and once it returns,
-assembles a transcript and an outcome from the agent state and
-workspace.
+collects the final `Outcome` from the workspace or application
+services. The generic execution trace is recorded automatically by the
+`EvalRunner`'s built-in `EvalTranscriptRecorder` through
+`context.controller`; harnesses must reuse that controller.
 
-`run()` must return **two** things:
+`run()` must return **two** things. In the common case, the business
+harness only needs to fill `Outcome`; it can return an empty
+`Transcript`, and the runner will replace it with the recorder
+snapshot:
 
 - `Transcript` — what the agent **did**: message sequence, tool calls,
-  retry / error events, turns / token counters. **Graders should
-  generally not look here** (path, not result)
+  retry / error events, turns / token counters. The framework records
+  this by default; construct it manually only when you need to override
+  or add custom trace data. Graders should use it whenever the score is
+  about process, tool use, messages, events, or metrics.
 - `Outcome` — what the environment **ended up like**.
   `environmentState` is an arbitrary map whose schema is a contract
-  between you and your graders. **Graders look here by default**
+  between you and your graders. Graders should use it whenever the
+  score is about final state.
 
 Common mistakes when populating `Outcome.environmentState`:
 
@@ -211,7 +220,7 @@ A real example from the PKM agent demo
 
 ```dart
 // Fact-collection code at the end of Harness.run()
-Outcome _capturePkmOutcome(Directory ws, SessionState state) {
+Outcome _capturePkmOutcome(Directory ws) {
   // 1. Walk the workspace
   final created = <String>[];
   final snippets = <String, String>{};
@@ -234,13 +243,15 @@ Outcome _capturePkmOutcome(Directory ws, SessionState state) {
 
   // 3. Check sentinel files (some tools leave side-effect markers)
   final skipped = File('${ws.path}/skipped.txt').existsSync();
-  final insightFile = Directory('${ws.path}/insights').listSync().firstOrNull;
+  final insightsDir = Directory('${ws.path}/insights');
+  final updatedInsight =
+      insightsDir.existsSync() && insightsDir.listSync().whereType<File>().isNotEmpty;
 
   return Outcome(
     environmentState: {
       'wrote_files': created,
       'fact_ids_in_files': factIds.toList(),
-      'updated_insight': insightFile != null,
+      'updated_insight': updatedInsight,
       'skipped': skipped,
     },
     workspaceDiff: WorkspaceDiff(created: created, contentSnippets: snippets),
@@ -459,7 +470,7 @@ class _EchoSession implements AgentHarnessSession {
 
     return (
       transcript: Transcript(
-        messages: List.unmodifiable(agent.state.history.messages),
+        messages: const [],
         toolCalls: const [],
         metrics: const TranscriptMetrics(nTurns: 0, nToolCalls: 0, nTotalTokens: 0),
       ),
@@ -845,10 +856,10 @@ class Outcome {
 }
 ```
 
-**Anthropic Step 5 hammers this point**: graders default to looking at
-`outcome` and only consult `transcript` when judging "did the path
-look right" (e.g. "must have called this tool" → check
-`transcript.toolCalls`).
+**Anthropic Step 5 hammers this point**: each grader evaluates the part
+of the trial that contains the evidence it needs. Outcome graders check
+final state; transcript graders check behavior over time, tool calls,
+messages, reasoning/events, and performance metrics.
 
 </br>
 

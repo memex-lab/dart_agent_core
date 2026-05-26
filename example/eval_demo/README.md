@@ -13,11 +13,10 @@ through any OpenAI-compatible endpoint.
   off-topic prompts.
 - **`EvalEnvironment`** (`environment.dart`): per-trial temp directory,
   optional record/replay wrapping for the LLM client.
-- **`AgentHarnessFactory`** (`harness.dart`): subscribes to the
-  `AgentController` event bus to assemble a `Transcript`
-  (messages + tool calls + retries + exceptions + timing + tokens) and
-  reads `answer.txt` / `declined.txt` from the workspace to produce an
-  `Outcome`.
+- **`AgentHarnessFactory`** (`harness.dart`): runs the agent with the
+  shared `AgentController`, then reads `answer.txt` / `declined.txt` from
+  the workspace to produce an `Outcome`. `EvalRunner` records the
+  `Transcript` automatically from controller events.
 - **Tasks** (`tasks.dart`): three `EvalTask` implementations
   (single-step add, multi-step compose, off-topic decline) covering both
   Anthropic positive and negative cases. Each declares its own graders,

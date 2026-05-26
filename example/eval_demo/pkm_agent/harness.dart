@@ -29,18 +29,10 @@ class PkmAgentHarnessFactory implements AgentHarnessFactory {
   }
 }
 
-Outcome _capturePkmOutcome(Directory ws, SessionState state) {
+Outcome _capturePkmOutcome(Directory ws) {
   final pkmRoot = Directory('${ws.path}/PKM');
   final created = <String>[];
   final modifiedSnippets = <String, String>{};
-  final allWritten = <String>[];
-
-  for (final tc in state.toolCalls) {
-    if (tc.toolName == 'write_file' && !tc.isError) {
-      final path = tc.arguments['path'];
-      if (path is String) allWritten.add(path);
-    }
-  }
 
   if (pkmRoot.existsSync()) {
     for (final entry in pkmRoot.listSync(recursive: true)) {
@@ -85,7 +77,7 @@ Outcome _capturePkmOutcome(Directory ws, SessionState state) {
 
   return Outcome(
     environmentState: {
-      'wrote_files': allWritten,
+      'wrote_files': created,
       'pkm_files_created': created,
       'fact_ids_in_files': factIdInFiles.toList(),
       'insight': ?insight,

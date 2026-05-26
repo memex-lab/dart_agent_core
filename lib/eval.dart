@@ -23,6 +23,7 @@ export 'src/eval/core/agent_harness_factory.dart';
 export 'src/eval/core/eval_runner.dart';
 export 'src/eval/core/eval_run_report.dart';
 export 'src/eval/core/eval_run_config.dart';
+export 'src/eval/core/transcript_recorder.dart';
 
 // Graders
 export 'src/eval/graders/grader.dart';
