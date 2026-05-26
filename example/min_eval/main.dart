@@ -100,7 +100,7 @@ class _EchoSession implements AgentHarnessSession {
 
     return (
       transcript: Transcript(
-        messages: List.unmodifiable(agent.state.history.messages),
+        messages: const [],
         toolCalls: const [],
         metrics: const TranscriptMetrics(
           nTurns: 0,

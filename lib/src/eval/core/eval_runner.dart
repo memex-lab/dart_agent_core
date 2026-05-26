@@ -15,6 +15,7 @@ import 'eval_suite.dart';
 import 'eval_task.dart';
 import 'outcome.dart';
 import 'transcript.dart';
+import 'transcript_recorder.dart';
 import 'trial.dart';
 import 'trial_result.dart';
 
@@ -235,6 +236,11 @@ extension on EvalRunner {
     String? failureReason;
 
     final context = await environment.prepare(trial: trial, task: task);
+    final recorder = EvalTranscriptRecorder(
+      controller: context.controller,
+      startedAt: startedAt,
+      now: context.clock.now,
+    );
     try {
       final session = await harnessFactory.create(
         task: task,
@@ -257,22 +263,32 @@ extension on EvalRunner {
         await session.dispose();
       }
     } finally {
+      // EventBus notifications are scheduled as microtasks by default. Give
+      // controller listeners a chance to drain before snapshotting.
+      await Future<void>.delayed(Duration.zero);
+      final currentTranscript = transcript;
+      if (currentTranscript == null || _isEmptyTranscript(currentTranscript)) {
+        transcript = recorder.snapshot();
+      }
+      await recorder.dispose();
       await environment.dispose(context);
     }
 
     final endedAt = DateTime.now();
 
     // If the harness produced no transcript/outcome (timeout/error), make
-    // empty placeholders so graders can still decide what to do.
-    transcript ??= Transcript(
-      messages: const [],
-      toolCalls: const [],
-      metrics: const TranscriptMetrics(
-        nTurns: 0,
-        nToolCalls: 0,
-        nTotalTokens: 0,
-      ),
-    );
+    // placeholders so graders can still decide what to do.
+    final effectiveTranscript =
+        transcript ??
+        Transcript(
+          messages: const [],
+          toolCalls: const [],
+          metrics: const TranscriptMetrics(
+            nTurns: 0,
+            nToolCalls: 0,
+            nTotalTokens: 0,
+          ),
+        );
     outcome ??= const Outcome(environmentState: {});
 
     // Run graders. Each grader returns a Score; runner does not enforce
@@ -282,7 +298,7 @@ extension on EvalRunner {
       try {
         final score = await grader.grade(
           trial: trial,
-          transcript: transcript,
+          transcript: effectiveTranscript,
           outcome: outcome,
           context: context,
           referenceSolution: task.referenceSolution,
@@ -320,7 +336,7 @@ extension on EvalRunner {
 
     final result = TrialResult(
       trial: trial,
-      transcript: transcript,
+      transcript: effectiveTranscript,
       outcome: outcome,
       scores: scores,
     );
@@ -328,7 +344,7 @@ extension on EvalRunner {
     try {
       await exporter.onTrialEnd(
         trial: trial,
-        transcript: transcript,
+        transcript: effectiveTranscript,
         outcome: outcome,
         scores: scores,
       );
@@ -337,5 +353,19 @@ extension on EvalRunner {
     }
 
     return result;
+  }
+
+  bool _isEmptyTranscript(Transcript transcript) {
+    final metrics = transcript.metrics;
+    return transcript.messages.isEmpty &&
+        transcript.toolCalls.isEmpty &&
+        transcript.reasoningSteps.isEmpty &&
+        transcript.events.isEmpty &&
+        metrics.nTurns == 0 &&
+        metrics.nToolCalls == 0 &&
+        metrics.nTotalTokens == 0 &&
+        metrics.timeToFirstToken == null &&
+        metrics.timeToLastToken == null &&
+        metrics.outputTokensPerSec == null;
   }
 }

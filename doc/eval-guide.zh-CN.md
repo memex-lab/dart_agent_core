@@ -40,9 +40,10 @@ agents"](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
 | **Agent Harness** | `AgentHarnessFactory` / `AgentHarnessSession` | 让模型像 Agent 一样行动的脚手架（你提供） |
 | **Evaluation Suite** | `EvalSuite` | 一组围绕同一能力/行为的 task |
 
-设计原则（Anthropic Step 5）：**默认看 Outcome，不看 Transcript**。
-"flight booked" 应当看数据库里有没有航班记录，而不是 Agent 是否说了
-"Your flight has been booked"。
+设计原则（Anthropic Step 5）：**按指标选择正确证据**。终态问题看
+`Outcome`（例如 "flight booked" 应当看数据库里有没有航班记录，而不是
+Agent 是否说了 "Your flight has been booked"）；过程问题看
+`Transcript`（例如是否先读后写、是否调用了必需工具）。
 
 </br>
 
@@ -164,15 +165,21 @@ abstract class AgentHarnessSession {
 ```
 
 Harness 是**唯一**知道你 agent 长什么样的层：实例化 `StatefulAgent`、
-注册 `Tool[]`、调 `agent.run([UserMessage(task.input['prompt'])])`、
-等它跑完，从 agent 状态和工作区拼出 transcript + outcome。
+注册 `Tool[]`、调 `agent.run([UserMessage(task.input['prompt'])])`，
+然后从工作区或业务服务里采集最终 `Outcome`。通用运行轨迹由
+`EvalRunner` 内置的 `EvalTranscriptRecorder` 从 `context.controller`
+自动录制；Harness 必须复用这个 controller。
 
-`run()` 必须返回**两件**东西：
+`run()` 必须返回**两件**东西。通常业务 Harness 只需要认真填
+`Outcome`，`Transcript` 可以返回空对象，Runner 会用自动录制的 snapshot
+补上：
 
 - `Transcript` — agent **做了什么**：消息序列、工具调用、retry / error
-  事件、turns / tokens 计数。**Grader 一般不该看这个**（看路径而非结果）
+  事件、turns / tokens 计数。默认由框架录制；只有需要覆盖或补充自定义
+  轨迹时才手动构造。凡是评估过程、工具使用、消息、事件或指标的 grader
+  都应该读它。
 - `Outcome` — 环境**最终是什么状态**：`environmentState` 是任意 Map，
-  schema 由你和 grader 约定。**Grader 默认看这个**
+  schema 由你和 grader 约定。凡是评估最终状态的 grader 都应该读它。
 
 `Outcome.environmentState` 的常见错误：
 
@@ -195,7 +202,7 @@ PKM agent 真实例子（节选自 `example/eval_demo/pkm_agent/harness.dart`）
 
 ```dart
 // Harness.run() 末尾的"事实采集"代码
-Outcome _capturePkmOutcome(Directory ws, SessionState state) {
+Outcome _capturePkmOutcome(Directory ws) {
   // ① 扫工作区目录
   final created = <String>[];
   final snippets = <String, String>{};
@@ -218,13 +225,15 @@ Outcome _capturePkmOutcome(Directory ws, SessionState state) {
 
   // ③ 检查哨兵文件（agent 调用某些工具会触发副作用文件）
   final skipped = File('${ws.path}/skipped.txt').existsSync();
-  final insightFile = Directory('${ws.path}/insights').listSync().firstOrNull;
+  final insightsDir = Directory('${ws.path}/insights');
+  final updatedInsight =
+      insightsDir.existsSync() && insightsDir.listSync().whereType<File>().isNotEmpty;
 
   return Outcome(
     environmentState: {
       'wrote_files': created,
       'fact_ids_in_files': factIds.toList(),
-      'updated_insight': insightFile != null,
+      'updated_insight': updatedInsight,
       'skipped': skipped,
     },
     workspaceDiff: WorkspaceDiff(created: created, contentSnippets: snippets),
@@ -439,7 +448,7 @@ class _EchoSession implements AgentHarnessSession {
 
     return (
       transcript: Transcript(
-        messages: List.unmodifiable(agent.state.history.messages),
+        messages: const [],
         toolCalls: const [],
         metrics: const TranscriptMetrics(nTurns: 0, nToolCalls: 0, nTotalTokens: 0),
       ),
@@ -794,8 +803,9 @@ class Outcome {
 }
 ```
 
-**Anthropic Step 5 反复强调**：grader 默认看 `outcome`，只有在判断"路径
-是否合理"时才动 `transcript`（例如"必须调用某个工具"才看 `transcript.toolCalls`）。
+**Anthropic Step 5 反复强调**：每个 grader 应该评估 trial 中与指标相关的
+那部分证据。终态 grader 看 `outcome`；过程 grader 看 `transcript`，包括
+工具调用、消息、reasoning / events 和性能指标。
 
 </br>
 

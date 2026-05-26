@@ -11,7 +11,7 @@ abstract class AgentHarnessFactory {
   /// Build a session for one trial. Implementations are responsible for:
   /// - Instantiating the agent (e.g. a StatefulAgent)
   /// - Wiring tools / skills
-  /// - Subscribing to controller events for transcript collection
+  /// - Reusing EvalContext.controller so the runner can record transcripts
   Future<AgentHarnessSession> create({
     required EvalTask task,
     required Trial trial,
@@ -22,7 +22,9 @@ abstract class AgentHarnessFactory {
 /// One trial worth of agent execution. Always created via the factory.
 abstract class AgentHarnessSession {
   /// Run the agent for this trial and produce both a transcript and an
-  /// outcome.
+  /// outcome. Sessions may return an empty transcript when using the
+  /// framework recorder; the runner will replace it with the recorded
+  /// snapshot.
   Future<({Transcript transcript, Outcome outcome})> run();
 
   /// Called after [run] regardless of outcome. Free any per-session

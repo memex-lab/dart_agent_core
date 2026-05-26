@@ -33,7 +33,7 @@ class CalculatorAgentHarnessFactory implements AgentHarnessFactory {
   }
 }
 
-Outcome _captureOutcome(Directory ws, SessionState state) {
+Outcome _captureOutcome(Directory ws) {
   final answerFile = File('${ws.path}/answer.txt');
   final declinedFile = File('${ws.path}/declined.txt');
   final explanationFile = File('${ws.path}/explanation.txt');

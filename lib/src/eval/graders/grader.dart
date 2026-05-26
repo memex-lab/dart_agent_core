@@ -10,9 +10,9 @@ enum GraderKind { code, model, human }
 
 /// A grader scores some aspect of an agent's performance for one trial.
 ///
-/// Implementations should default to inspecting the [Outcome] rather than
-/// the [Transcript] (Anthropic Step 5: grade what the agent produced, not
-/// the path it took).
+/// Implementations should inspect the artifact that contains the evidence for
+/// that aspect: [Outcome] for final environment state, [Transcript] for the
+/// agent's path, tool calls, messages, events, and metrics.
 abstract class Grader {
   /// Stable name. Used as score key in reports.
   String get name;

@@ -29,8 +29,8 @@ class CardAgentHarnessFactory implements AgentHarnessFactory {
   }
 }
 
-Outcome _captureCardOutcome(Directory ws, SessionState state) {
-  final factId = _findFactId(state);
+Outcome _captureCardOutcome(Directory ws) {
+  final factId = _findFactId(ws);
   final cardFile = factId == null
       ? null
       : File('${ws.path}/cards/$factId.yaml');
@@ -68,13 +68,13 @@ Outcome _captureCardOutcome(Directory ws, SessionState state) {
   );
 }
 
-/// Pull the fact_id from the most recent successful save_timeline_card
-/// tool call. Falls back to the fact_id in the input prompt.
-String? _findFactId(SessionState state) {
-  for (final tc in state.toolCalls.reversed) {
-    if (tc.toolName == 'save_timeline_card' && !tc.isError) {
-      final fid = tc.arguments['fact_id'];
-      if (fid is String) return fid;
+/// Pull the fact_id from the persisted card filename.
+String? _findFactId(Directory ws) {
+  final cardsDir = Directory('${ws.path}/cards');
+  if (!cardsDir.existsSync()) return null;
+  for (final entry in cardsDir.listSync()) {
+    if (entry is File && entry.path.endsWith('.yaml')) {
+      return entry.uri.pathSegments.last.replaceAll(RegExp(r'\.yaml$'), '');
     }
   }
   return null;
