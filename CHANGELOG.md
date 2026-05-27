@@ -1,3 +1,10 @@
+## 1.0.12
+
+- Add `EvalTranscriptRecorder`: automatically captures execution traces (messages, tool calls, reasoning steps, token/turn metrics) from `AgentController` during eval runs — harnesses no longer need to manually build transcripts.
+- `EvalRunner` now integrates `EvalTranscriptRecorder` per trial, producing richer `Transcript` data with timing metrics (time-to-first-token, time-to-last-token).
+- Simplify `AgentHarnessFactory` interface — harnesses focus on running the agent and returning `Outcome`, transcript recording is handled by the framework.
+- Update eval guide docs and examples to reflect the new recorder-based workflow.
+
 ## 1.0.11
 
 - Add evaluation subsystem under `package:dart_agent_core/eval.dart` (separate entry point — no impact on existing `dart_agent_core.dart` consumers).
