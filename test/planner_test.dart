@@ -5,7 +5,10 @@ import 'package:dart_agent_core/dart_agent_core.dart';
 import 'package:mockito/mockito.dart';
 import 'package:test/test.dart';
 
-class _MockStatefulAgent extends Mock implements StatefulAgent {}
+class _MockStatefulAgent extends Mock implements StatefulAgent {
+  @override
+  String get name => 'test-agent';
+}
 
 void main() {
   group('StepStatus 解析', () {
@@ -163,15 +166,15 @@ void main() {
     late _MockStatefulAgent agent;
     late Planner planner;
     late AgentState state;
+    late Tool writeTodos;
 
     setUp(() {
       agent = _MockStatefulAgent();
-      when(agent.name).thenReturn('test-agent');
       state = AgentState.empty();
       planner = Planner(agent, null);
+      writeTodos =
+          planner.tools.firstWhere((t) => t.name == 'write_todos');
     });
-
-    Tool get writeTodos => planner.tools.firstWhere((t) => t.name == 'write_todos');
 
     Future<AgentToolResult> runWriteTodos(List<Map<String, dynamic>> todos) {
       final ctx = AgentCallToolContext(
