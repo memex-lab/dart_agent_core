@@ -12,16 +12,22 @@ class EventBus {
     sync: true,
   );
   final Map<Type, Future<dynamic> Function(Event)> _requestHandlers = {};
+  var _closed = false;
 
   /// Publishes an event to all subscribers.
   /// [sync] determines whether the event is fired synchronously or asynchronously.
   /// - If [sync] is true, listeners are notified immediately.
   /// - If [sync] is false (default), notification is scheduled as a microtask.
   void publish(Event event, {bool sync = false}) {
+    if (_closed) return;
     if (sync) {
       _streamController.add(event);
     } else {
-      Future.microtask(() => _streamController.add(event));
+      Future.microtask(() {
+        if (!_closed) {
+          _streamController.add(event);
+        }
+      });
     }
   }
 
@@ -53,6 +59,10 @@ class EventBus {
   /// If [orElse] is provided, it will be called if no handler is registered immediately (non-blocking).
   /// If [orElse] is NOT provided and no handler is registered, it will throw an exception immediately.
   Future<R> request<R>(Event event, {R Function()? orElse}) async {
+    if (_closed) {
+      if (orElse != null) return orElse();
+      throw StateError('EventBus is closed');
+    }
     var handler = _requestHandlers[event.runtimeType];
 
     if (handler != null) {
@@ -71,6 +81,8 @@ class EventBus {
 
   /// Closes the event bus.
   void close() {
+    if (_closed) return;
+    _closed = true;
     _streamController.close();
     _requestHandlers.clear();
   }
