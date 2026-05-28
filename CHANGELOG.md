@@ -1,3 +1,8 @@
+## 1.0.13
+
+- Fix `EventBus`: ignore late events after `close()` to prevent errors when events are published during teardown.
+- Add unit tests for `LoopDetector`, `Planner`, and `EventBus`.
+
 ## 1.0.12
 
 - Add `EvalTranscriptRecorder`: automatically captures execution traces (messages, tool calls, reasoning steps, token/turn metrics) from `AgentController` during eval runs — harnesses no longer need to manually build transcripts.
