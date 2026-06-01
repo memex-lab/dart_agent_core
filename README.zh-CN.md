@@ -2,7 +2,7 @@
 
 # Dart Agent Core
 
-**一个 mobile-first、local-first 的 Dart 库，用于构建有状态、可调用工具的 AI Agent**
+**一个 mobile-first、local-first 的 Dart 库，用于构建和评估有状态、可调用工具的 AI Agent**
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
@@ -12,7 +12,7 @@
 
 </div>
 
-`dart_agent_core` 是一个 mobile-first、local-first 的 Dart Agent 框架，实现了包含工具调用、状态持久化、多轮记忆、Skill 系统与上下文压缩的完整 agentic loop。它可连接主流 LLM 提供商（OpenAI、Gemini、Claude 及任何 OpenAI 兼容 API），并将工具编排、流式输出、规划、子 Agent 委派等能力全部放在 Dart 侧，适合直接在 Flutter 应用中使用，而不依赖 Python 或 Node.js 后端。
+`dart_agent_core` 是一个 mobile-first、local-first 的 Dart Agent 框架，实现了包含工具调用、状态持久化、多轮记忆、Skill 系统、上下文压缩与 Agent 评估的完整 agentic loop。它可连接主流 LLM 提供商（OpenAI、Gemini、Claude 及任何 OpenAI 兼容 API），并将工具编排、流式输出、规划、子 Agent 委派等能力全部放在 Dart 侧，适合直接在 Flutter 应用中使用，而不依赖 Python 或 Node.js 后端。
 
 ---
 
@@ -22,6 +22,7 @@
 - **工具调用**：将任意 Dart 函数封装为带 JSON Schema 的工具。Agent 会自动发起调用、回填结果并循环执行直到任务完成。工具支持两种参数模式：函数模式（通过 `Function.apply` 进行位置参数/命名参数映射）和对象模式（将所有参数作为 `Map<String, dynamic>` 直接传入）。工具可返回 `AgentToolResult`，携带多模态内容、元数据或停止信号。
 - **多模态输入**：`UserMessage` 支持文本、图片、音频、视频和文档等内容片段。模型输出可包含文本、图片、视频和音频。
 - **有状态会话**：`AgentState` 追踪对话历史、Token 使用量、激活技能、计划与自定义元数据。`FileStateStorage` 可将状态以 JSON 持久化到磁盘。
+- **Agent 评估**：直接对 Dart Agent 代码运行评估套件，支持 task、grader、transcript、record/replay、报告，以及 pass@k / pass^k 指标。
 - **流式输出**：`runStream()` 会产出 `StreamingEvent`，包含模型分片、工具调用请求/结果、重试等事件，适合 Flutter 实时 UI。
 - **纯Dart Skill**：可定义模块化能力（`Skill`），每个 Skill 包含独立 system prompt 与工具。Skill 可设为常驻（`forceActivate`）或在运行时动态开关，以节省上下文窗口。
 - **基于文件的 Skill**：可从本地目录中的 `SKILL.md` 动态加载 Skill。配置 `javaScriptRuntime` 后，这类 Skill 可通过 `RunJavaScript` 执行 JavaScript 脚本，并支持 bridge 扩展。

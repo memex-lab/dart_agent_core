@@ -2,7 +2,7 @@
 
 # Dart Agent Core
 
-**A mobile-first, local-first Dart library for building stateful, tool-using AI agents**
+**A mobile-first, local-first Dart library for building and evaluating stateful, tool-using AI agents**
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
@@ -12,7 +12,7 @@
 
 </div>
 
-`dart_agent_core` is a mobile-first, local-first Dart library that implements a full agentic loop with tool use, state persistence, multi-turn memory, skill system, and context compression. It connects to mainstream LLM providers (OpenAI, Gemini, Claude, and any OpenAI-compatible API) and handles the orchestration layer — tool calling, streaming, planning, sub-agent delegation — entirely in Dart, making it suitable for Flutter apps without a Python or Node.js backend.
+`dart_agent_core` is a mobile-first, local-first Dart library that implements a full agentic loop with tool use, state persistence, multi-turn memory, skill system, context compression, and agent evals. It connects to mainstream LLM providers (OpenAI, Gemini, Claude, and any OpenAI-compatible API) and handles the orchestration layer — tool calling, streaming, planning, sub-agent delegation — entirely in Dart, making it suitable for Flutter apps without a Python or Node.js backend.
 
 ---
 
@@ -22,6 +22,7 @@
 - **Tool use**: Wrap any Dart function as a tool with a JSON Schema definition. The agent dispatches calls, feeds results back, and loops until done. Tools support two parameter modes: function mode (positional/named parameter mapping via `Function.apply`) and object mode (receive all arguments as a `Map<String, dynamic>`). Tools can return `AgentToolResult` to carry multimodal content, metadata, or a stop signal.
 - **Multimodal input**: `UserMessage` accepts text, images, audio, video, and documents as content parts. Model responses can include text, images, video, and audio.
 - **Stateful sessions**: `AgentState` tracks conversation history, token usage, active skills, plan, and custom metadata. `FileStateStorage` persists state to disk as JSON.
+- **Agent evals**: Run evaluation suites against your Dart agent code with tasks, graders, transcripts, record/replay, reports, and pass@k / pass^k metrics.
 - **Streaming**: `runStream()` yields `StreamingEvent`s for model chunks, tool call requests/results, and retries — suitable for real-time UI updates in Flutter.
 - **Pure Dart Skills**: Define modular capabilities (`Skill`) with their own system prompts and tools. Skills can be always-on (`forceActivate`) or toggled dynamically by the agent at runtime to save context window.
 - **File-system Skills**: Load Skills from `SKILL.md` files under a local directory root. With `javaScriptRuntime` configured, these Skills can execute JavaScript scripts via `RunJavaScript` and bridge channels.
