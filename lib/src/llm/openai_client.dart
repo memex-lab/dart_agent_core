@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:dio/dio.dart';
 import '../core/http_util.dart';
@@ -251,38 +250,6 @@ class OpenAIClient extends LLMClient {
           controller.addError(e);
           controller.close();
           break;
-        } on SocketException catch (e) {
-          if (retryCount < maxRetries) {
-            await waitForRetry('SocketException: ${e.message}');
-            controller.add(
-              StreamingMessage(
-                controlMessage: StreamingControlMessage(
-                  controlFlag: StreamingControlFlag.retry,
-                  data: {'retryReason': 'SocketException: ${e.message}'},
-                ),
-              ),
-            );
-            continue;
-          }
-          controller.addError(e);
-          controller.close();
-          break;
-        } on HttpException catch (e) {
-          if (retryCount < maxRetries) {
-            await waitForRetry('HttpException: ${e.message}');
-            controller.add(
-              StreamingMessage(
-                controlMessage: StreamingControlMessage(
-                  controlFlag: StreamingControlFlag.retry,
-                  data: {'retryReason': 'HttpException: ${e.message}'},
-                ),
-              ),
-            );
-            continue;
-          }
-          controller.addError(e);
-          controller.close();
-          break;
         } catch (e) {
           controller.addError(e);
           controller.close();
@@ -475,8 +442,9 @@ ModelMessage _parseResponse(
 ) {
   try {
     final choices = data['choices'] as List? ?? [];
-    if (choices.isEmpty)
+    if (choices.isEmpty) {
       return ModelMessage(textOutput: '', model: modelConfig.model);
+    }
 
     final choice = choices[0];
     final message = choice['message'];

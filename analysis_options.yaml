@@ -15,12 +15,6 @@ include: package:lints/recommended.yaml
 
 # Uncomment the following section to specify additional rules.
 
-linter:
-  rules:
-    constant_identifier_names: false
-    non_constant_identifier_names: false
-    annotate_overrides: false
-    curly_braces_in_flow_control_structures: false
 # analyzer:
 #   exclude:
 #     - path/to/excluded/files/**

@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:dart_agent_core/dart_agent_core.dart';
+import 'package:dart_agent_core/src/core/fs.dart';
 import 'package:logging/logging.dart';
 
 final _logger = Logger('Skill');
@@ -199,7 +199,7 @@ SystemPromptPart? buildSkillSystemPrompt(
   return SystemPromptPart(name: "skills", content: buffer.toString());
 }
 
-String _activateSkills(List<String> skill_names) {
+String _activateSkills(List<String> skillNames) {
   final state = AgentCallToolContext.current!.state;
   // Initialize the list if it's null
   state.activeSkills ??= [];
@@ -217,7 +217,7 @@ String _activateSkills(List<String> skill_names) {
   final forceActivated = <String>[];
   final notFound = <String>[];
 
-  for (var name in skill_names) {
+  for (var name in skillNames) {
     if (!availableSkillNames.contains(name)) {
       notFound.add(name);
       continue;
@@ -255,7 +255,7 @@ String _activateSkills(List<String> skill_names) {
   return buffer.toString();
 }
 
-String _deactivateSkills(List<String> skill_names) {
+String _deactivateSkills(List<String> skillNames) {
   final state = AgentCallToolContext.current!.state;
   final skills = AgentCallToolContext.current!.agent.skills ?? [];
   final forceActiveSkillNames = skills
@@ -267,7 +267,7 @@ String _deactivateSkills(List<String> skill_names) {
   final notFound = <String>[];
   final forceActivated = <String>[];
 
-  for (var name in skill_names) {
+  for (var name in skillNames) {
     if (forceActiveSkillNames.contains(name)) {
       forceActivated.add(name);
       continue;
@@ -301,8 +301,7 @@ Future<DirectorySkillLoadResult> loadDirectorySkillsFromRoot(
   String rootDirectoryPath, {
   int maxDepth = 6,
 }) async {
-  final root = Directory(rootDirectoryPath);
-  if (!root.existsSync()) {
+  if (!fsDirectoryExistsSync(rootDirectoryPath)) {
     return DirectorySkillLoadResult(
       skills: [],
       errors: [
@@ -317,24 +316,22 @@ Future<DirectorySkillLoadResult> loadDirectorySkillsFromRoot(
   final skills = <DirectorySkillMetadata>[];
   final errors = <DirectorySkillLoadError>[];
   final seenPaths = <String>{};
-  final rootAbsolute = root.absolute.path;
 
-  await for (final entity in root.list(recursive: true, followLinks: false)) {
-    if (entity is! File) continue;
-    if (_basename(entity.path) != 'SKILL.md') continue;
-
-    final relativeDepth = _relativeDepth(rootAbsolute, entity.absolute.path);
-    if (relativeDepth > maxDepth) continue;
-
-    final normalized = _normalizePath(entity.absolute.path);
+  final files = await fsFindFiles(
+    rootDirectoryPath,
+    'SKILL.md',
+    maxDepth: maxDepth,
+  );
+  for (final filePath in files) {
+    final normalized = _normalizePath(filePath);
     if (!seenPaths.add(normalized)) continue;
 
     try {
-      final metadata = await _parseDirectorySkillFile(entity);
+      final metadata = await _parseDirectorySkillFile(filePath);
       skills.add(metadata);
     } catch (e) {
       errors.add(
-        DirectorySkillLoadError(path: entity.path, message: e.toString()),
+        DirectorySkillLoadError(path: filePath, message: e.toString()),
       );
     }
   }
@@ -473,7 +470,7 @@ Future<DirectorySkillInjections> buildDirectorySkillInjections(
   final warnings = <String>[];
   for (final skill in mentionedSkills) {
     try {
-      final content = await File(skill.pathToSkillMd).readAsString();
+      final content = await fsReadAsString(skill.pathToSkillMd);
       final payload =
           "<skill>\n"
           "<name>${skill.name}</name>\n"
@@ -500,14 +497,16 @@ Future<DirectorySkillInjections> buildDirectorySkillInjections(
   return DirectorySkillInjections(items: items, warnings: warnings);
 }
 
-Future<DirectorySkillMetadata> _parseDirectorySkillFile(File skillFile) async {
-  final content = await skillFile.readAsString();
+Future<DirectorySkillMetadata> _parseDirectorySkillFile(
+  String skillPath,
+) async {
+  final content = await fsReadAsString(skillPath);
   final frontmatter = _extractFrontmatter(content);
   if (frontmatter == null) {
     throw Exception('missing YAML frontmatter delimited by ---');
   }
   final parsed = _parseSimpleFrontmatter(frontmatter);
-  final path = _normalizePath(skillFile.absolute.path);
+  final path = _normalizePath(fsAbsolutePath(skillPath));
   final fallbackName = _basename(_parentDir(path));
   final name = (parsed['name'] ?? fallbackName).trim();
   if (name.isEmpty) {
@@ -591,19 +590,4 @@ String _parentDir(String path) {
   final idx = normalized.lastIndexOf('/');
   if (idx <= 0) return normalized;
   return normalized.substring(0, idx);
-}
-
-int _relativeDepth(String root, String path) {
-  final normalizedRoot = root.replaceAll('\\', '/');
-  final normalizedPath = path.replaceAll('\\', '/');
-  if (!normalizedPath.startsWith(normalizedRoot)) return 0;
-  final rootSegments = normalizedRoot
-      .split('/')
-      .where((e) => e.isNotEmpty)
-      .length;
-  final pathSegments = normalizedPath
-      .split('/')
-      .where((e) => e.isNotEmpty)
-      .length;
-  return pathSegments - rootSegments;
 }

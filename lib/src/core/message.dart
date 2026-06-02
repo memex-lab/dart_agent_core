@@ -30,6 +30,7 @@ class SystemMessage extends LLMMessage {
   final String content;
   SystemMessage(this.content) : super(MessageRole.system);
 
+  @override
   Map<String, dynamic> toJson() => {'role': 'system', 'content': content};
 
   factory SystemMessage.fromJson(Map<String, dynamic> json) {
@@ -270,6 +271,7 @@ class UserMessage extends LLMMessage {
       timestamp = DateTime.now().microsecondsSinceEpoch,
       super(MessageRole.user);
 
+  @override
   Map<String, dynamic> toJson() => {
     'role': 'user',
     'timestamp': timestamp,
@@ -417,6 +419,7 @@ class ModelMessage extends LLMMessage {
   }) : timestamp = timestamp ?? DateTime.now().microsecondsSinceEpoch,
        super(MessageRole.assistant);
 
+  @override
   Map<String, dynamic> toJson() => {
     'role': 'assistant',
     if (thought != null) 'thought': thought,
@@ -534,6 +537,7 @@ class FunctionExecutionResultMessage extends LLMMessage {
     : timestamp = timestamp ?? DateTime.now().microsecondsSinceEpoch,
       super(MessageRole.tool);
 
+  @override
   Map<String, dynamic> toJson() => {
     'role': 'tool',
     'results': results.map((e) => e.toJson()).toList(),

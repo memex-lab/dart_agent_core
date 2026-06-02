@@ -52,7 +52,8 @@ class MathSkill extends Skill {
     : super(
         name: 'math',
         description: 'Perform mathematical calculations.',
-        systemPrompt: 'You are a math assistant. Use the calculator tool for computations.',
+        systemPrompt:
+            'You are a math assistant. Use the calculator tool for computations.',
         tools: [_calcTool],
       );
 
@@ -114,7 +115,9 @@ void main() async {
   );
 
   // The agent should recognize it needs the translation skill and activate it
-  print('Asking agent to translate (it should activate the translation skill)...\n');
+  print(
+    'Asking agent to translate (it should activate the translation skill)...\n',
+  );
   final responses = await agent.run([
     UserMessage.text('How do you say "hello" in Japanese?'),
   ]);

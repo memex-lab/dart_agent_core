@@ -44,6 +44,29 @@ dependencies:
 
 ---
 
+## 平台支持
+
+`dart_agent_core` 可运行于全部六个 Dart/Flutter 平台 —— **Android、iOS、Web、Windows、macOS 和 Linux** —— 并且**兼容 WebAssembly（WASM）**（[pub.dev](https://pub.dev/packages/dart_agent_core) 上 6/6 平台）。平台相关的实现（文件系统状态存储、HTTP 适配器、JavaScript 运行时）通过条件导出（conditional exports）在编译期解析，因此原生端与 Web 端的公开 API 完全一致。
+
+Web 端没有 `dart:io`，因此无法使用 `Platform.environment`。请改从浏览器读取 API Key —— 例如通过 `package:web` 从 `localStorage` 读取（WASM 安全）：
+
+```dart
+import 'package:web/web.dart' as web;
+import 'package:dart_agent_core/dart_agent_core.dart';
+
+void main() async {
+  // 在应用中先写入密钥（例如设置页面）：
+  //   web.window.localStorage.setItem('OPENAI_API_KEY', '<key>');
+  final apiKey = web.window.localStorage.getItem('OPENAI_API_KEY') ?? '';
+  final client = OpenAIClient(apiKey: apiKey);
+  // ... 与快速开始相同的 StatefulAgent 配置
+}
+```
+
+> 请在 `dependencies` 中添加 `web: ^1.0.0` 以使用 `package:web`。避免使用旧的 `dart:html`，它不兼容 WASM。在 Web 端请使用基于内存或 `localStorage` 的 `StateStorage`，而不是需要真实文件系统的 `FileStateStorage`。
+
+---
+
 ## 快速开始
 
 ```dart
@@ -390,9 +413,6 @@ agent.registerJavaScriptBridgeChannel('local.greeting', (payload, context) {
 });
 ```
 
-参考实现：
-- 查看 `lib/src/agent/javascript_runtime.dart`（注释中的 `FlutterJavaScriptRuntime` 完整示例）。
-
 桥接通道可由宿主应用扩展：
 - `registerJavaScriptBridgeChannel(channel, handler)`
 - `unregisterJavaScriptBridgeChannel(channel)`
@@ -562,8 +582,8 @@ final agent = StatefulAgent(
 - [OpenAI](example/simple_agent_with_openai_example.dart)
 - [Gemini](example/simple_agent_with_gemini_example.dart)
 - [Claude（直连 Anthropic）](example/simple_agent_with_claude_example.dart)
+- [AWS Bedrock（Claude）](example/simple_agent_with_bedrock_claude_example.dart)
 - [Kimi（Moonshot AI）](example/simple_agent_with_kimi_example.dart)
-- [Kimi 图片分析](example/simple_agent_with_kimi_vision_example.dart)
 - [通义千问（Qwen）](example/simple_agent_with_qwen_example.dart)
 - [智谱 GLM](example/simple_agent_with_glm_example.dart)
 - [火山引擎豆包（Seed）](example/simple_agent_with_seed_example.dart)

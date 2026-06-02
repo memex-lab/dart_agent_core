@@ -44,6 +44,29 @@ dependencies:
 
 ---
 
+## Platform Support
+
+`dart_agent_core` runs on all six Dart/Flutter platforms — **Android, iOS, Web, Windows, macOS, and Linux** — and is **WebAssembly (WASM) compatible** (6/6 platforms on [pub.dev](https://pub.dev/packages/dart_agent_core)). Platform-specific concerns (file-system state storage, HTTP adapters, JavaScript runtime) are resolved at compile time via conditional exports, so the public API is identical on native and web.
+
+There is no `dart:io` on the web, so `Platform.environment` is unavailable. Read your API key from the browser instead — for example from `localStorage` via `package:web` (WASM-safe):
+
+```dart
+import 'package:web/web.dart' as web;
+import 'package:dart_agent_core/dart_agent_core.dart';
+
+void main() async {
+  // Persist the key once from your app (e.g. a settings screen):
+  //   web.window.localStorage.setItem('OPENAI_API_KEY', '<key>');
+  final apiKey = web.window.localStorage.getItem('OPENAI_API_KEY') ?? '';
+  final client = OpenAIClient(apiKey: apiKey);
+  // ... same StatefulAgent setup as Quick Start
+}
+```
+
+> Add `web: ^1.0.0` to your `dependencies` to use `package:web`. Avoid the legacy `dart:html`, which is not WASM-compatible. On web, use an in-memory or `localStorage`-backed `StateStorage` rather than `FileStateStorage`, which requires a real file system.
+
+---
+
 ## Quick Start
 
 ```dart
@@ -292,9 +315,6 @@ agent.registerJavaScriptBridgeChannel('local.greeting', (payload, context) {
 });
 ```
 
-Reference implementation:
-- See `lib/src/agent/javascript_runtime.dart` (the commented `FlutterJavaScriptRuntime` example).
-
 Bridge channels can be extended by host apps via:
 - `registerJavaScriptBridgeChannel(channel, handler)`
 - `unregisterJavaScriptBridgeChannel(channel)`
@@ -464,8 +484,8 @@ See the [`example/`](example) directory:
 - [OpenAI](example/simple_agent_with_openai_example.dart)
 - [Gemini](example/simple_agent_with_gemini_example.dart)
 - [Claude (direct Anthropic API)](example/simple_agent_with_claude_example.dart)
+- [AWS Bedrock (Claude)](example/simple_agent_with_bedrock_claude_example.dart)
 - [Kimi (Moonshot AI)](example/simple_agent_with_kimi_example.dart)
-- [Kimi vision (image analysis)](example/simple_agent_with_kimi_vision_example.dart)
 - [Qwen (Alibaba DashScope)](example/simple_agent_with_qwen_example.dart)
 - [Zhipu GLM](example/simple_agent_with_glm_example.dart)
 - [Volcengine Doubao-Seed](example/simple_agent_with_seed_example.dart)

@@ -29,25 +29,32 @@ void main() {
     });
 
     test('PlanState toJson/fromJson 保留所有步骤', () {
-      final original = PlanState(steps: [
-        PlanStep(description: 'a', status: StepStatus.pending),
-        PlanStep(description: 'b', status: StepStatus.in_progress),
-        PlanStep(description: 'c', status: StepStatus.completed),
-        PlanStep(description: 'd', status: StepStatus.cancelled),
-      ]);
+      final original = PlanState(
+        steps: [
+          PlanStep(description: 'a', status: StepStatus.pending),
+          PlanStep(description: 'b', status: StepStatus.inProgress),
+          PlanStep(description: 'c', status: StepStatus.completed),
+          PlanStep(description: 'd', status: StepStatus.cancelled),
+        ],
+      );
 
-      final decoded =
-          PlanState.fromJson(jsonDecode(jsonEncode(original.toJson())));
+      final decoded = PlanState.fromJson(
+        jsonDecode(jsonEncode(original.toJson())),
+      );
 
       expect(decoded.steps.length, 4);
       expect(decoded.steps.map((e) => e.status).toList(), [
         StepStatus.pending,
-        StepStatus.in_progress,
+        StepStatus.inProgress,
         StepStatus.completed,
         StepStatus.cancelled,
       ]);
-      expect(decoded.steps.map((e) => e.description).toList(),
-          ['a', 'b', 'c', 'd']);
+      expect(decoded.steps.map((e) => e.description).toList(), [
+        'a',
+        'b',
+        'c',
+        'd',
+      ]);
     });
   });
 
@@ -58,7 +65,8 @@ void main() {
         validFromMessageIndex: 7,
       );
       final decoded = SystemPromptHistoryItem.fromJson(
-          jsonDecode(jsonEncode(item.toJson())));
+        jsonDecode(jsonEncode(item.toJson())),
+      );
       expect(decoded.content, item.content);
       expect(decoded.validFromMessageIndex, item.validFromMessageIndex);
     });
@@ -74,7 +82,8 @@ void main() {
         validFromMessageIndex: 3,
       );
       final decoded = ToolsHistoryItem.fromJson(
-          jsonDecode(jsonEncode(item.toJson())));
+        jsonDecode(jsonEncode(item.toJson())),
+      );
       expect(decoded.validFromMessageIndex, 3);
       expect(decoded.tools.length, 2);
       expect(decoded.tools[0]['name'], 'read');
@@ -101,8 +110,7 @@ void main() {
       expect(state.currentLoopCount, 0);
     });
 
-    test('toJson/fromJson 往返不丢失字段（含 systemPromptHistory、toolsHistory）',
-        () {
+    test('toJson/fromJson 往返不丢失字段（含 systemPromptHistory、toolsHistory）', () {
       final state = AgentState(
         sessionId: 'sess-1',
         totalLoopCount: 2,
@@ -111,34 +119,39 @@ void main() {
         isRunning: true,
         metadata: {'k': 'v'},
         systemReminders: {'r1': 'remember this'},
-        plan: PlanState(steps: [
-          PlanStep(description: 'step', status: StepStatus.in_progress),
-        ]),
+        plan: PlanState(
+          steps: [PlanStep(description: 'step', status: StepStatus.inProgress)],
+        ),
         activeSkills: ['skill_a'],
         systemPromptHistory: [
           SystemPromptHistoryItem(
-              content: 'sys prompt v1', validFromMessageIndex: 0),
+            content: 'sys prompt v1',
+            validFromMessageIndex: 0,
+          ),
           SystemPromptHistoryItem(
-              content: 'sys prompt v2', validFromMessageIndex: 5),
+            content: 'sys prompt v2',
+            validFromMessageIndex: 5,
+          ),
         ],
         toolsHistory: [
           ToolsHistoryItem(
             tools: [
-              {'name': 'tool_a', 'description': 'first'}
+              {'name': 'tool_a', 'description': 'first'},
             ],
             validFromMessageIndex: 0,
           ),
           ToolsHistoryItem(
             tools: [
-              {'name': 'tool_b', 'description': 'second'}
+              {'name': 'tool_b', 'description': 'second'},
             ],
             validFromMessageIndex: 4,
           ),
         ],
       );
 
-      final decoded =
-          AgentState.fromJson(jsonDecode(jsonEncode(state.toJson())));
+      final decoded = AgentState.fromJson(
+        jsonDecode(jsonEncode(state.toJson())),
+      );
 
       expect(decoded.sessionId, 'sess-1');
       expect(decoded.totalLoopCount, 2);
@@ -150,7 +163,7 @@ void main() {
       expect(decoded.activeSkills, ['skill_a']);
       expect(decoded.plan, isNotNull);
       expect(decoded.plan!.steps.single.description, 'step');
-      expect(decoded.plan!.steps.single.status, StepStatus.in_progress);
+      expect(decoded.plan!.steps.single.status, StepStatus.inProgress);
 
       expect(decoded.systemPromptHistory.length, 2);
       expect(decoded.systemPromptHistory[0].content, 'sys prompt v1');
@@ -172,8 +185,7 @@ void main() {
       agent = _MockStatefulAgent();
       state = AgentState.empty();
       planner = Planner(agent, null);
-      writeTodos =
-          planner.tools.firstWhere((t) => t.name == 'write_todos');
+      writeTodos = planner.tools.firstWhere((t) => t.name == 'write_todos');
     });
 
     Future<AgentToolResult> runWriteTodos(List<Map<String, dynamic>> todos) {
@@ -184,7 +196,7 @@ void main() {
       );
       return runZoned<Future<AgentToolResult>>(
         () async => await (writeTodos.executable as Function)(todos),
-        zoneValues: {AgentCallToolContext.ZoneKey: ctx},
+        zoneValues: {AgentCallToolContext.zoneKey: ctx},
       );
     }
 
@@ -222,7 +234,7 @@ void main() {
       expect(state.plan, isNotNull);
       expect(state.plan!.steps.length, 4);
       expect(state.plan!.steps.map((e) => e.status).toList(), [
-        StepStatus.in_progress,
+        StepStatus.inProgress,
         StepStatus.pending,
         StepStatus.completed,
         StepStatus.cancelled,
@@ -250,7 +262,7 @@ void main() {
 
       expect(state.plan!.steps.length, 2);
       expect(state.plan!.steps.first.description, '新任务 A');
-      expect(state.plan!.steps.first.status, StepStatus.in_progress);
+      expect(state.plan!.steps.first.status, StepStatus.inProgress);
     });
   });
 }

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:dio/dio.dart';
 import '../core/http_util.dart';
@@ -117,10 +116,6 @@ class ResponsesClient extends LLMClient {
               : response.data;
 
           final modelMessage = _parseResponse(data, modelConfig);
-          // Update the previousResponseId for the next turn
-          // if (modelMessage.responseId != null) {
-          //   previousResponseId = modelMessage.responseId;
-          // }
           return modelMessage;
         } else {
           // Retry for 429 and 5xx errors
@@ -307,38 +302,6 @@ class ResponsesClient extends LLMClient {
           controller.addError(e);
           controller.close();
           break;
-        } on SocketException catch (e) {
-          if (retryCount < maxRetries) {
-            await waitForRetry('SocketException: ${e.message}');
-            controller.add(
-              StreamingMessage(
-                controlMessage: StreamingControlMessage(
-                  controlFlag: StreamingControlFlag.retry,
-                  data: {'retryReason': 'SocketException: ${e.message}'},
-                ),
-              ),
-            );
-            continue;
-          }
-          controller.addError(e);
-          controller.close();
-          break;
-        } on HttpException catch (e) {
-          if (retryCount < maxRetries) {
-            await waitForRetry('HttpException: ${e.message}');
-            controller.add(
-              StreamingMessage(
-                controlMessage: StreamingControlMessage(
-                  controlFlag: StreamingControlFlag.retry,
-                  data: {'retryReason': 'HttpException: ${e.message}'},
-                ),
-              ),
-            );
-            continue;
-          }
-          controller.addError(e);
-          controller.close();
-          break;
         } catch (e) {
           controller.addError(e);
           controller.close();
@@ -498,7 +461,6 @@ Map<String, dynamic> _createRequestBody(
         // For now, assuming string is safest for 'output' unless we have specific file types
         // SDK: output is string or array.
         final textParts = <String>[];
-        // final otherParts = [];
 
         for (final part in res.content) {
           if (part is TextPart) {
@@ -583,10 +545,12 @@ Map<String, dynamic> _createRequestBody(
   }
 
   // 3. Config
-  if (modelConfig.temperature != null)
+  if (modelConfig.temperature != null) {
     body['temperature'] = modelConfig.temperature;
-  if (modelConfig.maxTokens != null)
+  }
+  if (modelConfig.maxTokens != null) {
     body['max_output_tokens'] = modelConfig.maxTokens;
+  }
   if (modelConfig.topP != null) body['top_p'] = modelConfig.topP;
 
   // Extra parameters

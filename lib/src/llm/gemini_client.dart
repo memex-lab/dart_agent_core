@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:dio/dio.dart';
 import '../core/http_util.dart';
@@ -153,7 +152,7 @@ class GeminiClient extends LLMClient {
     final url =
         'https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?key=$apiKey';
 
-    final body_json = _createRequestBody(
+    final bodyJson = _createRequestBody(
       messages,
       tools: tools,
       toolChoice: toolChoice,
@@ -188,7 +187,7 @@ class GeminiClient extends LLMClient {
 
           final response = await _client.post(
             url,
-            data: body_json,
+            data: bodyJson,
             options: Options(
               responseType: ResponseType.stream,
               sendTimeout: timeout,
@@ -296,38 +295,6 @@ class GeminiClient extends LLMClient {
           controller.addError(e);
           controller.close();
           break;
-        } on SocketException catch (e) {
-          if (retryCount < maxRetries) {
-            await waitForRetry('SocketException: ${e.message}');
-            controller.add(
-              StreamingMessage(
-                controlMessage: StreamingControlMessage(
-                  controlFlag: StreamingControlFlag.retry,
-                  data: {'retryReason': 'SocketException: ${e.message}'},
-                ),
-              ),
-            );
-            continue;
-          }
-          controller.addError(e);
-          controller.close();
-          break;
-        } on HttpException catch (e) {
-          if (retryCount < maxRetries) {
-            await waitForRetry('HttpException: ${e.message}');
-            controller.add(
-              StreamingMessage(
-                controlMessage: StreamingControlMessage(
-                  controlFlag: StreamingControlFlag.retry,
-                  data: {'retryReason': 'HttpException: ${e.message}'},
-                ),
-              ),
-            );
-            continue;
-          }
-          controller.addError(e);
-          controller.close();
-          break;
         } catch (e) {
           controller.addError(e);
           controller.close();
@@ -350,10 +317,11 @@ Map<String, dynamic> _createRequestBody(
 }) {
   final contents = messages.where((m) => m is! SystemMessage).map((m) {
     String role = 'user';
-    if (m is ModelMessage)
+    if (m is ModelMessage) {
       role = 'model';
-    else if (m is FunctionExecutionResultMessage)
+    } else if (m is FunctionExecutionResultMessage) {
       role = 'function';
+    }
 
     List<Map<String, dynamic>> parts = [];
 

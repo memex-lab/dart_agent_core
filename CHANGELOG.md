@@ -1,3 +1,11 @@
+## 2.0.0
+
+- **Web & WASM support**: the package now supports all 6 platforms (iOS, Android, Web, Windows, macOS, Linux) and is WebAssembly-compatible. Platform-specific concerns (file-system state storage, HTTP adapters, JavaScript runtime) are resolved at compile time via conditional exports, so the public API is identical across native and web.
+- **BREAKING**: `FileStateStorage` now takes a `String directoryPath` instead of a `Directory`. Migrate `FileStateStorage(dir)` to `FileStateStorage(dir.path)`. On web, prefer an in-memory or `localStorage`-backed `StateStorage` rather than `FileStateStorage`.
+- Network errors from the OpenAI, Gemini, and Responses clients are now surfaced via `DioException` instead of `dart:io` `SocketException`, removing `dart:io` from the public reachable surface.
+- Add a Platform Support section (with a web-safe API-key snippet) to both READMEs.
+- Internal style cleanup: lowerCamelCase identifiers and braced flow-control statements; pana static-analysis now scores 50/50 (160/160 overall).
+
 ## 1.0.14
 
 - Add agent run lifecycle hooks.

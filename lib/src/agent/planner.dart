@@ -5,7 +5,7 @@ final _plannerLogger = Logger('planner');
 
 enum PlanMode { none, auto, must }
 
-enum StepStatus { pending, in_progress, completed, cancelled }
+enum StepStatus { pending, inProgress, completed, cancelled }
 
 class PlanStep {
   final String description;
@@ -107,7 +107,7 @@ class Planner {
           status = StepStatus.completed;
           break;
         case 'in_progress':
-          status = StepStatus.in_progress;
+          status = StepStatus.inProgress;
           break;
         case 'cancelled':
           status = StepStatus.cancelled;
@@ -138,7 +138,7 @@ class Planner {
         case StepStatus.completed:
           statusText = "completed";
           break;
-        case StepStatus.in_progress:
+        case StepStatus.inProgress:
           statusText = "in_progress";
           break;
         case StepStatus.cancelled:
@@ -170,7 +170,7 @@ class Planner {
         case StepStatus.completed:
           icon = "✅";
           break;
-        case StepStatus.in_progress:
+        case StepStatus.inProgress:
           icon = "👉";
           break;
         case StepStatus.cancelled:

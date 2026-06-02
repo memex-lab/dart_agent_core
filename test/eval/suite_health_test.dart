@@ -42,7 +42,8 @@ class _Noop extends CodeGrader {
 
 EvalSuite _suite(SuiteKind kind, List<String> taskIds) => EvalSuite(
   name: 'suite_x',
-  agentName: 'agent_x',  kind: kind,
+  agentName: 'agent_x',
+  kind: kind,
   tasks: [
     for (final id in taskIds) _StubTask(id: id, graders: [_Noop()]),
   ],
