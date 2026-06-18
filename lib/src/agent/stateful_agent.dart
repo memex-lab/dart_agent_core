@@ -882,6 +882,12 @@ class StatefulAgent {
     int currentRetryCount = 0;
     const int maxRetryCount = 3;
     int turnContinuationCount = 0;
+    final historyLengthBeforeRun = state.history.messages.length;
+    final systemPromptHistoryLengthBeforeRun = state.systemPromptHistory.length;
+    final toolsHistoryLengthBeforeRun = state.toolsHistory.length;
+    final usagesLengthBeforeRun = state.usages.length;
+    final currentLoopUsagesLengthBeforeRun = state.currentLoopUsages.length;
+    var committedHistoryDuringRun = false;
     try {
       if (controller != null) {
         final response = await controller!.request(
@@ -1292,6 +1298,7 @@ class StatefulAgent {
 
         if (aggregatedTools.isEmpty) {
           state.history.messages.add(fullMessage);
+          committedHistoryDuringRun = true;
 
           // Turn-completion hook: the model wants to stop, but the harness may
           // decide to continue with a follow-up message. Bounded by
@@ -1466,6 +1473,7 @@ class StatefulAgent {
         );
 
         state.history.messages.addAll([fullMessage, toolExecutionMessage]);
+        committedHistoryDuringRun = true;
 
         // Post-tool-call hook: external state updates and optional follow-up
         // reminder messages injected before the next LLM call. When null,
@@ -1568,12 +1576,32 @@ class StatefulAgent {
       );
       throw error;
     } finally {
+      if (error != null && !committedHistoryDuringRun) {
+        _truncateList(state.history.messages, historyLengthBeforeRun);
+        _truncateList(
+          state.systemPromptHistory,
+          systemPromptHistoryLengthBeforeRun,
+        );
+        _truncateList(state.toolsHistory, toolsHistoryLengthBeforeRun);
+        _truncateList(state.usages, usagesLengthBeforeRun);
+        _truncateList(
+          state.currentLoopUsages,
+          currentLoopUsagesLengthBeforeRun,
+        );
+        state.isRunning = false;
+      }
       if (autoSaveStateFunc != null) {
         await autoSaveStateFunc!(state);
       }
       controller?.publish(
         AgentStoppedEvent(this, messages, modelMessages, error: error),
       );
+    }
+  }
+
+  void _truncateList<T>(List<T> list, int length) {
+    if (list.length > length) {
+      list.removeRange(length, list.length);
     }
   }
 

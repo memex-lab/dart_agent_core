@@ -91,9 +91,17 @@ class DefaultLoopDetector implements LoopDetector {
       _updateToolCalls(chunkMessage.functionCalls);
       final toolLoop = _checkToolCallLoop();
       if (toolLoop.isLoop) return toolLoop;
+      return LoopDetectorResult(isLoop: false);
     }
 
     // 2. LLM Smart Diagnosis (Periodic)
+    // Only run this on a complete, non-tool-calling model turn. Streaming
+    // deltas are partial and must not block tool execution, and tool calls are
+    // already actionable progress rather than a text-only stagnation signal.
+    if (chunkMessage.stopReason == null) {
+      return LoopDetectorResult(isLoop: false);
+    }
+
     if (client != null && modelConfig != null) {
       if (state.totalLoopCount > llmCheckAfterTurns &&
           (state.totalLoopCount - _lastLLMCheckTurn) >= llmCheckInterval) {
