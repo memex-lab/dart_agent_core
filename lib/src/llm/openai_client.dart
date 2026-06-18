@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import '../core/http_util.dart';
@@ -47,8 +48,10 @@ class OpenAIClient extends LLMClient {
     CancelToken? cancelToken,
   }) async {
     final url = '$baseUrl/chat/completions';
+    final normalized = _normalizeOpenAICompatibleToolCallIds(messages);
+    _logToolCallIdNormalization(normalized);
     final body = _createRequestBody(
-      messages,
+      normalized.messages,
       tools: tools,
       toolChoice: toolChoice,
       modelConfig: modelConfig,
@@ -133,8 +136,10 @@ class OpenAIClient extends LLMClient {
     CancelToken? cancelToken,
   }) async {
     final url = '$baseUrl/chat/completions';
+    final normalized = _normalizeOpenAICompatibleToolCallIds(messages);
+    _logToolCallIdNormalization(normalized);
     final body = _createRequestBody(
-      messages,
+      normalized.messages,
       tools: tools,
       toolChoice: toolChoice,
       modelConfig: modelConfig,
@@ -294,6 +299,163 @@ class OpenAIClient extends LLMClient {
     pumpStream();
     return controller.stream;
   }
+
+  void _logToolCallIdNormalization(_ToolCallIdNormalizationResult normalized) {
+    if (!normalized.changed) return;
+    _logger.info(
+      'Rewrote ${normalized.rewrittenCallCount} duplicate OpenAI-compatible '
+      'tool call id(s): ${normalized.duplicateIds.join(', ')}',
+    );
+  }
+}
+
+class _ToolCallIdNormalizationResult {
+  final List<LLMMessage> messages;
+  final bool changed;
+  final int rewrittenCallCount;
+  final List<String> duplicateIds;
+
+  const _ToolCallIdNormalizationResult({
+    required this.messages,
+    required this.changed,
+    required this.rewrittenCallCount,
+    required this.duplicateIds,
+  });
+}
+
+_ToolCallIdNormalizationResult _normalizeOpenAICompatibleToolCallIds(
+  List<LLMMessage> messages,
+) {
+  final seenCallIds = <String, int>{};
+  final pendingResultIds = <String, List<String>>{};
+  final duplicateIds = <String>{};
+  final normalizedMessages = <LLMMessage>[];
+  var changed = false;
+  var rewrittenCallCount = 0;
+
+  for (var messageIndex = 0; messageIndex < messages.length; messageIndex++) {
+    final message = messages[messageIndex];
+    if (message is ModelMessage && message.functionCalls.isNotEmpty) {
+      final normalizedCalls = <FunctionCall>[];
+      var messageChanged = false;
+
+      for (
+        var callIndex = 0;
+        callIndex < message.functionCalls.length;
+        callIndex++
+      ) {
+        final call = message.functionCalls[callIndex];
+        final count = (seenCallIds[call.id] ?? 0) + 1;
+        seenCallIds[call.id] = count;
+        final nextId = count == 1
+            ? call.id
+            : _dedupedToolCallId(call.id, messageIndex, callIndex, count);
+        pendingResultIds.putIfAbsent(call.id, () => <String>[]).add(nextId);
+
+        if (nextId == call.id) {
+          normalizedCalls.add(call);
+        } else {
+          messageChanged = true;
+          rewrittenCallCount++;
+          duplicateIds.add(call.id);
+          normalizedCalls.add(
+            FunctionCall(
+              id: nextId,
+              name: call.name,
+              arguments: call.arguments,
+            ),
+          );
+        }
+      }
+
+      if (messageChanged) {
+        changed = true;
+        normalizedMessages.add(
+          ModelMessage(
+            thought: message.thought,
+            thoughtSignature: message.thoughtSignature,
+            contentBlocks: message.contentBlocks,
+            functionCalls: normalizedCalls,
+            textOutput: message.textOutput,
+            imageOutputs: message.imageOutputs,
+            videoOutputs: message.videoOutputs,
+            audioOutputs: message.audioOutputs,
+            usage: message.usage,
+            metadata: message.metadata,
+            stopReason: message.stopReason,
+            model: message.model,
+            responseId: message.responseId,
+            timestamp: message.timestamp,
+          ),
+        );
+      } else {
+        normalizedMessages.add(message);
+      }
+    } else if (message is FunctionExecutionResultMessage) {
+      final normalizedResults = <FunctionExecutionResult>[];
+      var messageChanged = false;
+
+      for (final result in message.results) {
+        final ids = pendingResultIds[result.id];
+        final nextId = ids == null || ids.isEmpty ? result.id : ids.removeAt(0);
+        if (nextId == result.id) {
+          normalizedResults.add(result);
+        } else {
+          messageChanged = true;
+          normalizedResults.add(
+            FunctionExecutionResult(
+              id: nextId,
+              name: result.name,
+              isError: result.isError,
+              arguments: result.arguments,
+              content: result.content,
+              metadata: result.metadata,
+              timestamp: result.timestamp,
+            ),
+          );
+        }
+      }
+
+      if (messageChanged) {
+        changed = true;
+        normalizedMessages.add(
+          FunctionExecutionResultMessage(
+            results: normalizedResults,
+            timestamp: message.timestamp,
+          ),
+        );
+      } else {
+        normalizedMessages.add(message);
+      }
+    } else {
+      normalizedMessages.add(message);
+    }
+  }
+
+  return _ToolCallIdNormalizationResult(
+    messages: changed ? normalizedMessages : messages,
+    changed: changed,
+    rewrittenCallCount: rewrittenCallCount,
+    duplicateIds: duplicateIds.toList(growable: false),
+  );
+}
+
+String _dedupedToolCallId(
+  String originalId,
+  int messageIndex,
+  int callIndex,
+  int count,
+) {
+  final safeOriginal = originalId
+      .replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')
+      .replaceAll(RegExp(r'_+'), '_');
+  final suffix = '${messageIndex}_${callIndex}_$count';
+  final maxOriginalLength = math.max(0, 48 - suffix.length);
+  final trimmedOriginal = safeOriginal.length > maxOriginalLength
+      ? safeOriginal.substring(0, maxOriginalLength)
+      : safeOriginal;
+  final base = trimmedOriginal.isEmpty ? 'tool' : trimmedOriginal;
+  return 'memex_${base}_$suffix';
 }
 
 Map<String, dynamic> _createRequestBody(
