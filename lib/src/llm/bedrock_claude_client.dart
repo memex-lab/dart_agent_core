@@ -458,13 +458,12 @@ class BedrockClaudeClient extends LLMClient {
   List<Map<String, dynamic>> _buildAssistantContent(ModelMessage message) {
     final content = <Map<String, dynamic>>[];
 
-    if (message.thought != null &&
-        message.thought!.isNotEmpty &&
-        message.thoughtSignature != null) {
+    if (message.thought != null && message.thought!.isNotEmpty) {
       content.add({
         'type': 'thinking',
         'thinking': message.thought,
-        'signature': message.thoughtSignature,
+        if (message.thoughtSignature != null)
+          'signature': message.thoughtSignature,
       });
     }
 

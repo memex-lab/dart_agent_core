@@ -387,7 +387,11 @@ Map<String, dynamic> _createRequestBody(
       if (m.textOutput != null) parts.add({'text': m.textOutput});
       for (var fc in m.functionCalls) {
         parts.add({
-          'functionCall': {'name': fc.name, 'args': jsonDecode(fc.arguments)},
+          'functionCall': {
+            if (fc.id.isNotEmpty) 'id': fc.id,
+            'name': fc.name,
+            'args': jsonDecode(fc.arguments),
+          },
         });
       }
       // Attach thoughtSignature if present
@@ -450,7 +454,8 @@ Map<String, dynamic> _createRequestBody(
 
         parts.add({
           'functionResponse': {
-            'name': res.id,
+            if (res.id.isNotEmpty) 'id': res.id,
+            'name': res.name,
             'response': {'content': textContent},
             if (partsList.isNotEmpty) 'parts': partsList,
           },
@@ -560,10 +565,12 @@ ModelMessage? _parseResponse(
 
       if (part.containsKey('functionCall')) {
         final fc = part['functionCall'];
+        final name = fc['name']?.toString() ?? '';
+        final id = fc['id']?.toString();
         functionCalls.add(
           FunctionCall(
-            id: fc['name'],
-            name: fc['name'],
+            id: id == null || id.isEmpty ? name : id,
+            name: name,
             arguments: jsonEncode(fc['args'] ?? {}),
           ),
         );

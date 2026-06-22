@@ -259,12 +259,138 @@ class SystemCallbackResult {
 
 /// Callback type for intercepting and modifying system_message, tools, and request_messages
 /// before each LLM call. Receives the StatefulAgent instance as the first argument.
-typedef SystemCallback = Future<SystemCallbackResult> Function(
-  StatefulAgent agent,
-  SystemMessage? systemMessage,
-  List<Tool> tools,
-  List<LLMMessage> requestMessages,
-);
+typedef SystemCallback =
+    Future<SystemCallbackResult> Function(
+      StatefulAgent agent,
+      SystemMessage? systemMessage,
+      List<Tool> tools,
+      List<LLMMessage> requestMessages,
+    );
+
+/// The decision a [TurnCompletionHook] makes when the model finishes a turn
+/// with no tool calls (i.e. the loop is about to break/finalize).
+enum TurnCompletionDecision {
+  /// Accept the completion and break the run loop, exactly like the default
+  /// behavior when no hook is configured.
+  accept,
+
+  /// Reject the completion and continue the run loop by appending a follow-up
+  /// [UserMessage] (carried in [TurnCompletionResult.followUpMessage]).
+  continueRun,
+}
+
+/// Result of a [TurnCompletionHook]. Use [TurnCompletionResult.accept] to let
+/// the run finalize as usual, or [TurnCompletionResult.continueWith] to inject
+/// a follow-up user message and keep looping.
+class TurnCompletionResult {
+  final TurnCompletionDecision decision;
+
+  /// The follow-up message appended to history when [decision] is
+  /// [TurnCompletionDecision.continueRun]. Ignored otherwise.
+  final UserMessage? followUpMessage;
+
+  /// Accept the model's completion; the run loop breaks as it does by default.
+  const TurnCompletionResult.accept()
+    : decision = TurnCompletionDecision.accept,
+      followUpMessage = null;
+
+  /// Continue the run loop with [followUpMessage] appended to history. The
+  /// continuation still counts toward the existing turn cap and toward the
+  /// hook's own continuation budget ([StatefulAgent.maxTurnContinuations]).
+  const TurnCompletionResult.continueWith(this.followUpMessage)
+    : decision = TurnCompletionDecision.continueRun;
+}
+
+/// Hook invoked when the model returns a message with NO tool calls and the run
+/// loop is about to finalize. It can accept the completion (default break) or
+/// request a continuation by returning a follow-up [UserMessage].
+///
+/// Continuations are bounded by [StatefulAgent.maxTurnContinuations] and still
+/// count toward the existing turn/loop cap, so a misbehaving hook cannot loop
+/// forever. When the hook is null, the loop breaks exactly as before.
+typedef TurnCompletionHook =
+    Future<TurnCompletionResult> Function(
+      StatefulAgent agent,
+      AgentState state,
+      ModelMessage finalMessage,
+    );
+
+/// The action a [PreToolCallHook] takes for a single tool call.
+enum PreToolCallAction {
+  /// Execute the tool, optionally with rewritten arguments.
+  proceed,
+
+  /// Skip execution and return a synthetic tool result instead. The framework
+  /// invariant that every tool call yields a tool result is preserved.
+  deny,
+}
+
+/// Result of a [PreToolCallHook] for one tool call.
+class PreToolCallResult {
+  final PreToolCallAction action;
+
+  /// When [action] is [PreToolCallAction.proceed] and non-null, replaces the
+  /// tool call's JSON argument string before execution.
+  final String? rewrittenArguments;
+
+  /// When [action] is [PreToolCallAction.deny], the synthetic tool-result
+  /// content fed back to the model. Defaults to a generic denial text.
+  final List<UserContentPart>? denyResultContent;
+
+  /// Whether the synthetic denied result is flagged as an error result.
+  final bool denyIsError;
+
+  /// Allow the tool to run, optionally rewriting its [rewrittenArguments].
+  const PreToolCallResult.proceed({this.rewrittenArguments})
+    : action = PreToolCallAction.proceed,
+      denyResultContent = null,
+      denyIsError = false;
+
+  /// Deny the tool call and feed [resultContent] back as a synthetic tool
+  /// result so the model still receives a result for the call.
+  const PreToolCallResult.deny({
+    List<UserContentPart>? resultContent,
+    bool isError = true,
+  }) : action = PreToolCallAction.deny,
+       rewrittenArguments = null,
+       denyResultContent = resultContent,
+       denyIsError = isError;
+}
+
+/// Hook invoked before each tool executes. It can allow the call as-is, allow
+/// it with rewritten arguments, or deny it with a synthetic tool result.
+///
+/// Unlike the controller's [BeforeToolCallRequest] (binary approve/deny that
+/// aborts the whole run), denying here keeps the run alive and still produces a
+/// tool result. When null, behavior is unchanged.
+typedef PreToolCallHook =
+    Future<PreToolCallResult> Function(
+      StatefulAgent agent,
+      AgentState state,
+      FunctionCall call,
+    );
+
+/// Result of a [PostToolCallHook] for one tool result.
+class PostToolCallResult {
+  /// Optional follow-up reminder injected into history (before the next LLM
+  /// call) after the tool result. Null means "no reminder".
+  final UserMessage? reminderMessage;
+
+  const PostToolCallResult({this.reminderMessage});
+}
+
+/// Hook invoked after each tool executes. It can update external state and
+/// optionally return a follow-up reminder [UserMessage] to inject before the
+/// next LLM call.
+///
+/// Unlike the controller's [AfterToolCallRequest] (binary stop), this can
+/// inject context without aborting the run. When null, behavior is unchanged.
+typedef PostToolCallHook =
+    Future<PostToolCallResult> Function(
+      StatefulAgent agent,
+      AgentState state,
+      FunctionExecutionResult result,
+    );
 
 /// A stateful AI agent that orchestrates LLM calls, tool execution,
 /// skill management, and context compression.
@@ -336,6 +462,24 @@ class StatefulAgent {
 
   /// Optional callback to dynamically modify LLM requests before they are sent.
   final SystemCallback? systemCallback;
+
+  /// Optional hook fired when the model completes a turn with no tool calls.
+  /// Can accept the completion (break) or continue with a follow-up message.
+  /// When null, the loop breaks exactly as before.
+  final TurnCompletionHook? turnCompletionHook;
+
+  /// Maximum number of [turnCompletionHook]-driven continuations allowed in a
+  /// single run, on top of the existing turn/loop cap. Prevents a misbehaving
+  /// hook from looping forever. Defaults to 3.
+  final int maxTurnContinuations;
+
+  /// Optional hook fired before each tool executes. Can allow, rewrite
+  /// arguments, or deny with a synthetic result. When null, unchanged.
+  final PreToolCallHook? preToolCallHook;
+
+  /// Optional hook fired after each tool executes. Can inject a follow-up
+  /// reminder message before the next LLM call. When null, unchanged.
+  final PostToolCallHook? postToolCallHook;
   List<DirectorySkillMetadata> _directorySkills = [];
   late final JavaScriptBridgeRegistry _jsBridgeRegistry;
 
@@ -364,6 +508,10 @@ class StatefulAgent {
     this.isSubAgent = false,
     this.disableSubAgents = false,
     this.systemCallback,
+    this.turnCompletionHook,
+    this.maxTurnContinuations = 3,
+    this.preToolCallHook,
+    this.postToolCallHook,
     this.maxTurns = 20,
   }) : assert(
          skills == null ||
@@ -733,6 +881,7 @@ class StatefulAgent {
     final currentMaxTurns = maxTurns ?? this.maxTurns;
     int currentRetryCount = 0;
     const int maxRetryCount = 3;
+    int turnContinuationCount = 0;
     try {
       if (controller != null) {
         final response = await controller!.request(
@@ -1143,6 +1292,41 @@ class StatefulAgent {
 
         if (aggregatedTools.isEmpty) {
           state.history.messages.add(fullMessage);
+
+          // Turn-completion hook: the model wants to stop, but the harness may
+          // decide to continue with a follow-up message. Bounded by
+          // maxTurnContinuations (and the existing turn/loop cap) so a
+          // misbehaving hook cannot loop forever.
+          if (turnCompletionHook != null &&
+              turnContinuationCount < maxTurnContinuations) {
+            TurnCompletionResult? completion;
+            try {
+              completion = await turnCompletionHook!(this, state, fullMessage);
+            } catch (e) {
+              _logger.warning(
+                '[$name] turn_completion_hook execution error: $e. Accepting completion.',
+              );
+              completion = null;
+            }
+            if (completion != null &&
+                completion.decision == TurnCompletionDecision.continueRun &&
+                completion.followUpMessage != null) {
+              turnContinuationCount++;
+              state.history.messages.add(completion.followUpMessage!);
+              _logger.info(
+                '[$name] ▶️ Turn-completion hook requested continuation '
+                '($turnContinuationCount/$maxTurnContinuations)',
+              );
+              continue;
+            }
+          } else if (turnCompletionHook != null &&
+              turnContinuationCount >= maxTurnContinuations) {
+            _logger.warning(
+              '[$name] turn_completion_hook continuation budget exhausted '
+              '($maxTurnContinuations); accepting completion.',
+            );
+          }
+
           break;
         }
 
@@ -1172,12 +1356,72 @@ class StatefulAgent {
           }
         }
 
-        final toolExecutionResults = await _executeTools(
-          aggregatedTools,
-          toolsCopy,
-          state,
-          cancelToken: cancelToken,
-        );
+        // Pre-tool-call hook: allow as-is, rewrite arguments, or deny with a
+        // synthetic result. Denied calls are NOT executed but still produce a
+        // tool result, preserving the every-call-gets-a-result invariant.
+        final List<FunctionCall> callsToExecute;
+        final Map<String, ExecutionToolResult> syntheticResults = {};
+        if (preToolCallHook != null) {
+          final filtered = <FunctionCall>[];
+          for (final toolCall in aggregatedTools) {
+            PreToolCallResult? hookResult;
+            try {
+              hookResult = await preToolCallHook!(this, state, toolCall);
+            } catch (e) {
+              _logger.warning(
+                '[$name] pre_tool_call_hook execution error for '
+                '${toolCall.name}: $e. Proceeding with original call.',
+              );
+              hookResult = null;
+            }
+            if (hookResult != null &&
+                hookResult.action == PreToolCallAction.deny) {
+              _logger.info(
+                '[$name] 🚫 Tool call denied by hook: ${toolCall.name}',
+              );
+              syntheticResults[toolCall.id] = ExecutionToolResult(
+                id: toolCall.id,
+                name: toolCall.name,
+                arguments: toolCall.arguments,
+                content:
+                    hookResult.denyResultContent ??
+                    [TextPart('Tool call ${toolCall.name} denied by hook.')],
+                isError: hookResult.denyIsError,
+              );
+              continue;
+            }
+            if (hookResult != null &&
+                hookResult.action == PreToolCallAction.proceed &&
+                hookResult.rewrittenArguments != null) {
+              filtered.add(
+                FunctionCall(
+                  id: toolCall.id,
+                  name: toolCall.name,
+                  arguments: hookResult.rewrittenArguments!,
+                ),
+              );
+            } else {
+              filtered.add(toolCall);
+            }
+          }
+          callsToExecute = filtered;
+        } else {
+          callsToExecute = aggregatedTools;
+        }
+
+        final executedResults = callsToExecute.isEmpty
+            ? <ExecutionToolResult>[]
+            : await _executeTools(
+                callsToExecute,
+                toolsCopy,
+                state,
+                cancelToken: cancelToken,
+              );
+        // Merge executed + synthetic results, preserving the original call order.
+        final executedById = {for (final r in executedResults) r.id: r};
+        final toolExecutionResults = aggregatedTools
+            .map((c) => executedById[c.id] ?? syntheticResults[c.id]!)
+            .toList();
         final List<FunctionExecutionResult> functionExecutionResults =
             toolExecutionResults
                 .map(
@@ -1222,6 +1466,30 @@ class StatefulAgent {
         );
 
         state.history.messages.addAll([fullMessage, toolExecutionMessage]);
+
+        // Post-tool-call hook: external state updates and optional follow-up
+        // reminder messages injected before the next LLM call. When null,
+        // history is unchanged from the default path.
+        if (postToolCallHook != null) {
+          for (final toolResult in functionExecutionResults) {
+            PostToolCallResult? hookResult;
+            try {
+              hookResult = await postToolCallHook!(this, state, toolResult);
+            } catch (e) {
+              _logger.warning(
+                '[$name] post_tool_call_hook execution error for '
+                '${toolResult.name}: $e. Skipping reminder.',
+              );
+              hookResult = null;
+            }
+            if (hookResult?.reminderMessage != null) {
+              state.history.messages.add(hookResult!.reminderMessage!);
+              _logger.info(
+                '[$name] 💬 Post-tool-call hook injected reminder after ${toolResult.name}',
+              );
+            }
+          }
+        }
 
         if (autoSaveStateFunc != null) {
           await autoSaveStateFunc!(state);

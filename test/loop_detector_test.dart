@@ -2,10 +2,7 @@ import 'package:dart_agent_core/dart_agent_core.dart';
 import 'package:test/test.dart';
 
 ModelMessage _msgWithCalls(List<FunctionCall> calls) {
-  return ModelMessage(
-    model: 'test-model',
-    functionCalls: calls,
-  );
+  return ModelMessage(model: 'test-model', functionCalls: calls);
 }
 
 void main() {
@@ -47,13 +44,15 @@ void main() {
 
       LoopDetectorResult? finalResult;
       for (var i = 0; i < 5; i++) {
-        finalResult = await detector.detect(_msgWithCalls([
-          FunctionCall(
-            id: 'call_$i',
-            name: 'read',
-            arguments: '{"path":"loop.md"}',
-          ),
-        ]));
+        finalResult = await detector.detect(
+          _msgWithCalls([
+            FunctionCall(
+              id: 'call_$i',
+              name: 'read',
+              arguments: '{"path":"loop.md"}',
+            ),
+          ]),
+        );
         if (i < 4) {
           expect(finalResult.isLoop, isFalse, reason: '第 ${i + 1} 次还不应触发');
         }
@@ -69,13 +68,15 @@ void main() {
       final detector = DefaultLoopDetector(state: state, toolLoopThreshold: 5);
 
       for (var i = 0; i < 4; i++) {
-        final result = await detector.detect(_msgWithCalls([
-          FunctionCall(
-            id: 'call_$i',
-            name: 'search',
-            arguments: '{"q":"dart"}',
-          ),
-        ]));
+        final result = await detector.detect(
+          _msgWithCalls([
+            FunctionCall(
+              id: 'call_$i',
+              name: 'search',
+              arguments: '{"q":"dart"}',
+            ),
+          ]),
+        );
         expect(result.isLoop, isFalse);
       }
     });
@@ -85,18 +86,105 @@ void main() {
       final detector = DefaultLoopDetector(state: state, toolLoopThreshold: 3);
 
       // Stream-like updates: 同一个 id，参数分片增长。
-      await detector.detect(_msgWithCalls([
-        FunctionCall(id: 'streaming', name: 'read', arguments: '{"pa'),
-      ]));
-      await detector.detect(_msgWithCalls([
-        FunctionCall(id: 'streaming', name: 'read', arguments: '{"path":"x"}'),
-      ]));
+      await detector.detect(
+        _msgWithCalls([
+          FunctionCall(id: 'streaming', name: 'read', arguments: '{"pa'),
+        ]),
+      );
+      await detector.detect(
+        _msgWithCalls([
+          FunctionCall(
+            id: 'streaming',
+            name: 'read',
+            arguments: '{"path":"x"}',
+          ),
+        ]),
+      );
 
       // 再补一个不同 id 的调用，仍只有 2 条独立调用，未触发阈值。
-      final result = await detector.detect(_msgWithCalls([
-        FunctionCall(id: 'other', name: 'read', arguments: '{"path":"y"}'),
-      ]));
+      final result = await detector.detect(
+        _msgWithCalls([
+          FunctionCall(id: 'other', name: 'read', arguments: '{"path":"y"}'),
+        ]),
+      );
       expect(result.isLoop, isFalse);
     });
+
+    test('流式中间 chunk 不触发 LLM 诊断', () async {
+      final state = AgentState.empty()..totalLoopCount = 100;
+      final client = _CountingLLMClient();
+      final detector = DefaultLoopDetector(
+        state: state,
+        client: client,
+        modelConfig: ModelConfig(model: 'test-model'),
+        llmCheckAfterTurns: 1,
+        llmCheckInterval: 1,
+      );
+
+      final result = await detector.detect(
+        ModelMessage(model: 'test-model', textOutput: 'partial'),
+      );
+
+      expect(result.isLoop, isFalse);
+      expect(client.generateCount, 0);
+    });
+
+    test('工具调用响应不触发 LLM 诊断', () async {
+      final state = AgentState.empty()..totalLoopCount = 100;
+      final client = _CountingLLMClient();
+      final detector = DefaultLoopDetector(
+        state: state,
+        client: client,
+        modelConfig: ModelConfig(model: 'test-model'),
+        llmCheckAfterTurns: 1,
+        llmCheckInterval: 1,
+      );
+
+      final result = await detector.detect(
+        ModelMessage(
+          model: 'test-model',
+          stopReason: 'tool_calls',
+          functionCalls: [
+            FunctionCall(id: 'call_1', name: 'read', arguments: '{}'),
+          ],
+        ),
+      );
+
+      expect(result.isLoop, isFalse);
+      expect(client.generateCount, 0);
+    });
   });
+}
+
+class _CountingLLMClient extends LLMClient {
+  int generateCount = 0;
+
+  @override
+  Future<ModelMessage> generate(
+    List<LLMMessage> messages, {
+    List<Tool>? tools,
+    ToolChoice? toolChoice,
+    required ModelConfig modelConfig,
+    bool? jsonOutput,
+    dynamic cancelToken,
+  }) async {
+    generateCount += 1;
+    return ModelMessage(
+      model: modelConfig.model,
+      textOutput: '{"is_loop":false,"reason":"ok","confidence":0}',
+      stopReason: 'stop',
+    );
+  }
+
+  @override
+  Future<Stream<StreamingMessage>> stream(
+    List<LLMMessage> messages, {
+    List<Tool>? tools,
+    ToolChoice? toolChoice,
+    required ModelConfig modelConfig,
+    bool? jsonOutput,
+    dynamic cancelToken,
+  }) async {
+    throw UnimplementedError();
+  }
 }

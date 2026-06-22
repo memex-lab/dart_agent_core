@@ -155,15 +155,15 @@ SystemPromptPart? buildSkillSystemPrompt(
 
     if (forceActiveSkills.isNotEmpty) {
       buffer.writeln(
-        "- **CRITICAL**: NEVER call `activateSkills` or `deactivateSkills` on the **Core Capabilities** listed in Section 1. They are built-in.",
+        "- **CRITICAL**: NEVER call `activate_skills` or `deactivate_skills` on the **Core Capabilities** listed in Section 1. They are built-in.",
       );
     }
 
     buffer.writeln(
-      "- **WHEN TO ACTIVATE**: If a user request requires specific expertise listed in **Section 2 (Optional Capabilities)** and the skill is currently [INACTIVE], you MUST call `activateSkills(['skill_name'])`.",
+      "- **WHEN TO ACTIVATE**: If a user request requires specific expertise listed in **Section 2 (Optional Capabilities)** and the skill is currently [INACTIVE], call the `activate_skills` tool with `skill_names: ['skill_name']`.",
     );
     buffer.writeln(
-      "- **WHEN TO DEACTIVATE**: If an optional skill is no longer relevant to the current step (e.g., switching from coding to casual chat), call `deactivateSkills(['skill_name'])` to reduce noise.",
+      "- **WHEN TO DEACTIVATE**: If an optional skill is no longer relevant to the current step (e.g., switching from coding to casual chat), call the `deactivate_skills` tool with `skill_names: ['skill_name']` to reduce noise.",
     );
     buffer.writeln(
       "- **NOTE**: You can have multiple skills active simultaneously.",
