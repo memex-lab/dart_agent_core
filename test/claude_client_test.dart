@@ -107,6 +107,35 @@ void main() {
       expect(toolResult['is_error'], isTrue);
     });
 
+    test('兼容服务没有 thinking signature 时仍会回传 thinking block', () async {
+      final adapter = _CaptureAdapter([
+        (_) => _jsonResponse({
+          'content': [
+            {'type': 'text', 'text': 'ok'},
+          ],
+          'stop_reason': 'end_turn',
+          'usage': {'input_tokens': 1, 'output_tokens': 1},
+        }),
+      ]);
+      final client = ClaudeClient(
+        apiKey: 'test-key',
+        client: Dio()..httpClientAdapter = adapter,
+      );
+
+      await client.generate([
+        ModelMessage(model: 'claude-compatible', thought: '先分析兼容服务输出'),
+      ], modelConfig: ModelConfig(model: 'claude-test'));
+
+      final request =
+          jsonDecode(adapter.requests.single as String) as Map<String, dynamic>;
+      final assistantContent =
+          (request['messages'][0] as Map<String, dynamic>)['content'] as List;
+
+      expect(assistantContent, [
+        {'type': 'thinking', 'thinking': '先分析兼容服务输出'},
+      ]);
+    });
+
     test('stream 会产出完整有序 content blocks', () async {
       final adapter = _CaptureAdapter([
         (_) => _streamResponse([

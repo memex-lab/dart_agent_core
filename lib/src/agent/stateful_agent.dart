@@ -760,10 +760,10 @@ class StatefulAgent {
     return isAbsolute;
   }
 
-  Future<void> _prepareDirectorySkills(
+  Future<List<LLMMessage>> _prepareDirectorySkills(
     List<LLMMessage> incomingMessages,
   ) async {
-    if (!_isDirectorySkillModeEnabled) return;
+    if (!_isDirectorySkillModeEnabled) return const [];
 
     final root = skillDirectoryPath!.trim();
     final loaded = await loadDirectorySkillsFromRoot(root);
@@ -777,7 +777,7 @@ class StatefulAgent {
 
     if (_directorySkills.isEmpty) {
       _logger.info('[$name] no directory skills found under: $root');
-      return;
+      return const [];
     }
 
     final mentionedSkills = collectExplicitDirectorySkillMentions(
@@ -785,7 +785,7 @@ class StatefulAgent {
       _directorySkills,
     );
     if (mentionedSkills.isEmpty) {
-      return;
+      return const [];
     }
 
     final injections = await buildDirectorySkillInjections(mentionedSkills);
@@ -793,11 +793,11 @@ class StatefulAgent {
       _logger.warning('[$name] $warning');
     }
     if (injections.items.isNotEmpty) {
-      state.history.messages.addAll(injections.items);
       _logger.info(
         '[$name] injected ${injections.items.length} directory skill instruction message(s)',
       );
     }
+    return injections.items;
   }
 
   Future<List<LLMMessage>> resume({bool useStream = true}) async {
@@ -882,12 +882,30 @@ class StatefulAgent {
     int currentRetryCount = 0;
     const int maxRetryCount = 3;
     int turnContinuationCount = 0;
-    final historyLengthBeforeRun = state.history.messages.length;
-    final systemPromptHistoryLengthBeforeRun = state.systemPromptHistory.length;
-    final toolsHistoryLengthBeforeRun = state.toolsHistory.length;
-    final usagesLengthBeforeRun = state.usages.length;
-    final currentLoopUsagesLengthBeforeRun = state.currentLoopUsages.length;
+    final pendingHistoryMessages = <LLMMessage>[];
+    final pendingSystemPromptHistory = <SystemPromptHistoryItem>[];
+    final pendingToolsHistory = <ToolsHistoryItem>[];
     var committedHistoryDuringRun = false;
+
+    int nextHistoryMessageIndex() {
+      return state.history.messages.length + pendingHistoryMessages.length;
+    }
+
+    void commitPendingRunState() {
+      if (pendingHistoryMessages.isNotEmpty) {
+        state.history.messages.addAll(pendingHistoryMessages);
+        pendingHistoryMessages.clear();
+      }
+      if (pendingSystemPromptHistory.isNotEmpty) {
+        state.systemPromptHistory.addAll(pendingSystemPromptHistory);
+        pendingSystemPromptHistory.clear();
+      }
+      if (pendingToolsHistory.isNotEmpty) {
+        state.toolsHistory.addAll(pendingToolsHistory);
+        pendingToolsHistory.clear();
+      }
+    }
+
     try {
       if (controller != null) {
         final response = await controller!.request(
@@ -904,10 +922,8 @@ class StatefulAgent {
         controller!.publish(AgentStartedEvent(this, messages));
       }
 
-      if (messages.isNotEmpty) {
-        state.history.messages.addAll(messages);
-      }
-      await _prepareDirectorySkills(messages);
+      pendingHistoryMessages.addAll(messages);
+      pendingHistoryMessages.addAll(await _prepareDirectorySkills(messages));
       state.currentLoopCount = 0;
       state.currentLoopUsages.clear();
       // To prevent infinite loops in streams or complex state, we might limit turns?
@@ -932,7 +948,10 @@ class StatefulAgent {
 
         // 3. Build request messages
         var systemMessage = composeSystemMessage();
-        var requestMessages = List<LLMMessage>.from(state.history.messages);
+        var requestMessages = <LLMMessage>[
+          ...state.history.messages,
+          ...pendingHistoryMessages,
+        ];
 
         _injectSystemReminder(requestMessages);
 
@@ -983,10 +1002,10 @@ class StatefulAgent {
               '[$name] 🔄 System Prompt changed! Hash: $lastSystemPromptHash -> $currentSystemPromptHash',
             );
           }
-          state.systemPromptHistory.add(
+          pendingSystemPromptHistory.add(
             SystemPromptHistoryItem(
               content: systemMessage?.content ?? '',
-              validFromMessageIndex: state.history.messages.length,
+              validFromMessageIndex: nextHistoryMessageIndex(),
             ),
           );
         }
@@ -998,10 +1017,10 @@ class StatefulAgent {
               '[$name] 🔄 Tools attributes changed! Hash: $lastToolsHash -> $currentToolsHash',
             );
           }
-          state.toolsHistory.add(
+          pendingToolsHistory.add(
             ToolsHistoryItem(
               tools: toolsCopy.map((t) => t.toJson()).toList(),
-              validFromMessageIndex: state.history.messages.length,
+              validFromMessageIndex: nextHistoryMessageIndex(),
             ),
           );
         }
@@ -1291,12 +1310,12 @@ class StatefulAgent {
         );
         modelMessages.add(fullMessage);
 
-        if (fullMessage.usage != null) {
-          state.usages.add(fullMessage.usage!);
-          state.currentLoopUsages.add(fullMessage.usage!);
-        }
-
         if (aggregatedTools.isEmpty) {
+          commitPendingRunState();
+          if (fullMessage.usage != null) {
+            state.usages.add(fullMessage.usage!);
+            state.currentLoopUsages.add(fullMessage.usage!);
+          }
           state.history.messages.add(fullMessage);
           committedHistoryDuringRun = true;
 
@@ -1472,6 +1491,11 @@ class StatefulAgent {
           data: toolExecutionMessage,
         );
 
+        commitPendingRunState();
+        if (fullMessage.usage != null) {
+          state.usages.add(fullMessage.usage!);
+          state.currentLoopUsages.add(fullMessage.usage!);
+        }
         state.history.messages.addAll([fullMessage, toolExecutionMessage]);
         committedHistoryDuringRun = true;
 
@@ -1577,17 +1601,6 @@ class StatefulAgent {
       throw error;
     } finally {
       if (error != null && !committedHistoryDuringRun) {
-        _truncateList(state.history.messages, historyLengthBeforeRun);
-        _truncateList(
-          state.systemPromptHistory,
-          systemPromptHistoryLengthBeforeRun,
-        );
-        _truncateList(state.toolsHistory, toolsHistoryLengthBeforeRun);
-        _truncateList(state.usages, usagesLengthBeforeRun);
-        _truncateList(
-          state.currentLoopUsages,
-          currentLoopUsagesLengthBeforeRun,
-        );
         state.isRunning = false;
       }
       if (autoSaveStateFunc != null) {
@@ -1596,12 +1609,6 @@ class StatefulAgent {
       controller?.publish(
         AgentStoppedEvent(this, messages, modelMessages, error: error),
       );
-    }
-  }
-
-  void _truncateList<T>(List<T> list, int length) {
-    if (list.length > length) {
-      list.removeRange(length, list.length);
     }
   }
 
