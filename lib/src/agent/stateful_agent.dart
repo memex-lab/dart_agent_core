@@ -760,10 +760,10 @@ class StatefulAgent {
     return isAbsolute;
   }
 
-  Future<List<LLMMessage>> _prepareDirectorySkills(
+  Future<void> _prepareDirectorySkills(
     List<LLMMessage> incomingMessages,
   ) async {
-    if (!_isDirectorySkillModeEnabled) return const [];
+    if (!_isDirectorySkillModeEnabled) return;
 
     final root = skillDirectoryPath!.trim();
     final loaded = await loadDirectorySkillsFromRoot(root);
@@ -777,7 +777,7 @@ class StatefulAgent {
 
     if (_directorySkills.isEmpty) {
       _logger.info('[$name] no directory skills found under: $root');
-      return const [];
+      return;
     }
 
     final mentionedSkills = collectExplicitDirectorySkillMentions(
@@ -785,7 +785,7 @@ class StatefulAgent {
       _directorySkills,
     );
     if (mentionedSkills.isEmpty) {
-      return const [];
+      return;
     }
 
     final injections = await buildDirectorySkillInjections(mentionedSkills);
@@ -793,11 +793,11 @@ class StatefulAgent {
       _logger.warning('[$name] $warning');
     }
     if (injections.items.isNotEmpty) {
+      state.history.messages.addAll(injections.items);
       _logger.info(
         '[$name] injected ${injections.items.length} directory skill instruction message(s)',
       );
     }
-    return injections.items;
   }
 
   Future<List<LLMMessage>> resume({bool useStream = true}) async {
@@ -882,30 +882,6 @@ class StatefulAgent {
     int currentRetryCount = 0;
     const int maxRetryCount = 3;
     int turnContinuationCount = 0;
-    final pendingHistoryMessages = <LLMMessage>[];
-    final pendingSystemPromptHistory = <SystemPromptHistoryItem>[];
-    final pendingToolsHistory = <ToolsHistoryItem>[];
-    var committedHistoryDuringRun = false;
-
-    int nextHistoryMessageIndex() {
-      return state.history.messages.length + pendingHistoryMessages.length;
-    }
-
-    void commitPendingRunState() {
-      if (pendingHistoryMessages.isNotEmpty) {
-        state.history.messages.addAll(pendingHistoryMessages);
-        pendingHistoryMessages.clear();
-      }
-      if (pendingSystemPromptHistory.isNotEmpty) {
-        state.systemPromptHistory.addAll(pendingSystemPromptHistory);
-        pendingSystemPromptHistory.clear();
-      }
-      if (pendingToolsHistory.isNotEmpty) {
-        state.toolsHistory.addAll(pendingToolsHistory);
-        pendingToolsHistory.clear();
-      }
-    }
-
     try {
       if (controller != null) {
         final response = await controller!.request(
@@ -922,8 +898,10 @@ class StatefulAgent {
         controller!.publish(AgentStartedEvent(this, messages));
       }
 
-      pendingHistoryMessages.addAll(messages);
-      pendingHistoryMessages.addAll(await _prepareDirectorySkills(messages));
+      if (messages.isNotEmpty) {
+        state.history.messages.addAll(messages);
+      }
+      await _prepareDirectorySkills(messages);
       state.currentLoopCount = 0;
       state.currentLoopUsages.clear();
       // To prevent infinite loops in streams or complex state, we might limit turns?
@@ -948,10 +926,7 @@ class StatefulAgent {
 
         // 3. Build request messages
         var systemMessage = composeSystemMessage();
-        var requestMessages = <LLMMessage>[
-          ...state.history.messages,
-          ...pendingHistoryMessages,
-        ];
+        var requestMessages = List<LLMMessage>.from(state.history.messages);
 
         _injectSystemReminder(requestMessages);
 
@@ -1002,10 +977,10 @@ class StatefulAgent {
               '[$name] 🔄 System Prompt changed! Hash: $lastSystemPromptHash -> $currentSystemPromptHash',
             );
           }
-          pendingSystemPromptHistory.add(
+          state.systemPromptHistory.add(
             SystemPromptHistoryItem(
               content: systemMessage?.content ?? '',
-              validFromMessageIndex: nextHistoryMessageIndex(),
+              validFromMessageIndex: state.history.messages.length,
             ),
           );
         }
@@ -1017,10 +992,10 @@ class StatefulAgent {
               '[$name] 🔄 Tools attributes changed! Hash: $lastToolsHash -> $currentToolsHash',
             );
           }
-          pendingToolsHistory.add(
+          state.toolsHistory.add(
             ToolsHistoryItem(
               tools: toolsCopy.map((t) => t.toJson()).toList(),
-              validFromMessageIndex: nextHistoryMessageIndex(),
+              validFromMessageIndex: state.history.messages.length,
             ),
           );
         }
@@ -1310,14 +1285,13 @@ class StatefulAgent {
         );
         modelMessages.add(fullMessage);
 
+        if (fullMessage.usage != null) {
+          state.usages.add(fullMessage.usage!);
+          state.currentLoopUsages.add(fullMessage.usage!);
+        }
+
         if (aggregatedTools.isEmpty) {
-          commitPendingRunState();
-          if (fullMessage.usage != null) {
-            state.usages.add(fullMessage.usage!);
-            state.currentLoopUsages.add(fullMessage.usage!);
-          }
           state.history.messages.add(fullMessage);
-          committedHistoryDuringRun = true;
 
           // Turn-completion hook: the model wants to stop, but the harness may
           // decide to continue with a follow-up message. Bounded by
@@ -1491,13 +1465,7 @@ class StatefulAgent {
           data: toolExecutionMessage,
         );
 
-        commitPendingRunState();
-        if (fullMessage.usage != null) {
-          state.usages.add(fullMessage.usage!);
-          state.currentLoopUsages.add(fullMessage.usage!);
-        }
         state.history.messages.addAll([fullMessage, toolExecutionMessage]);
-        committedHistoryDuringRun = true;
 
         // Post-tool-call hook: external state updates and optional follow-up
         // reminder messages injected before the next LLM call. When null,
@@ -1600,9 +1568,6 @@ class StatefulAgent {
       );
       throw error;
     } finally {
-      if (error != null && !committedHistoryDuringRun) {
-        state.isRunning = false;
-      }
       if (autoSaveStateFunc != null) {
         await autoSaveStateFunc!(state);
       }
