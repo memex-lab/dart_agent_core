@@ -1,3 +1,10 @@
+## 1.0.14
+
+- Add agent run lifecycle hooks.
+- Fix OpenAI duplicate tool call ids.
+- Align agent run state and tool call ids.
+- Prevent failed retries from bloating agent history.
+
 ## 1.0.13
 
 - Fix `EventBus`: ignore late events after `close()` to prevent errors when events are published during teardown.
