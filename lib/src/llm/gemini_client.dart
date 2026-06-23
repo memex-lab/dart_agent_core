@@ -11,7 +11,7 @@ import 'package:logging/logging.dart';
 final Logger _geminiLogger = Logger('GeminiClient');
 
 class GeminiClient extends LLMClient {
-  final String apiKey;
+  final String _apiKey;
   final Dio _client;
   final Duration timeout;
   final Duration connectTimeout;
@@ -21,15 +21,16 @@ class GeminiClient extends LLMClient {
   final int maxRetryDelayMs;
 
   GeminiClient({
-    required this.apiKey,
+    required String apiKey,
     Dio? client,
     this.timeout = const Duration(seconds: 300),
     this.connectTimeout = const Duration(seconds: 60),
     this.proxyUrl,
     this.maxRetries = 3,
     this.initialRetryDelayMs = 5000,
-    this.maxRetryDelayMs = 3000,
-  }) : _client = client ?? Dio() {
+    this.maxRetryDelayMs = 30000,
+  }) : _apiKey = apiKey,
+       _client = client ?? Dio() {
     configureProxy(_client, proxyUrl);
     _client.options.connectTimeout = connectTimeout;
   }
@@ -52,7 +53,7 @@ class GeminiClient extends LLMClient {
     );
     final model = modelConfig.model;
     final url =
-        'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey';
+        'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent';
     int retryCount = 0;
     int currentDelayMs = initialRetryDelayMs;
 
@@ -80,7 +81,10 @@ class GeminiClient extends LLMClient {
           options: Options(
             sendTimeout: timeout,
             receiveTimeout: timeout,
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': _apiKey,
+            },
             validateStatus: (code) => true,
           ),
           cancelToken: cancelToken,
@@ -126,7 +130,7 @@ class GeminiClient extends LLMClient {
             }
           }
           throw Exception(
-            'Failed to generate from Gemini: ${response.statusCode} ${response.statusMessage} ${response.data}',
+            'Failed to generate from Gemini: status ${response.statusCode}',
           );
         }
       } on DioException catch (e) {
@@ -150,7 +154,7 @@ class GeminiClient extends LLMClient {
   }) async {
     final model = modelConfig.model;
     final url =
-        'https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?key=$apiKey';
+        'https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent';
 
     final bodyJson = _createRequestBody(
       messages,
@@ -192,7 +196,10 @@ class GeminiClient extends LLMClient {
               responseType: ResponseType.stream,
               sendTimeout: timeout,
               receiveTimeout: timeout,
-              headers: {'Content-Type': 'application/json'},
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': _apiKey,
+              },
               validateStatus: (code) => true,
             ),
             cancelToken: cancelToken,
@@ -226,11 +233,8 @@ class GeminiClient extends LLMClient {
               }
             }
 
-            final responseBody = await utf8.decodeStream(
-              (response.data.stream as Stream).cast<List<int>>(),
-            );
             throw Exception(
-              'Failed to stream from Gemini: ${response.statusCode} ${response.statusMessage} $responseBody',
+              'Failed to stream from Gemini: status ${response.statusCode}',
             );
           }
 

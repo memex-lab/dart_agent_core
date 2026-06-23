@@ -74,7 +74,9 @@ class FileStateStorage implements StateStorage {
       final json = jsonDecode(content);
       return AgentState.fromJson(json);
     } catch (e) {
-      _logger.severe('❌ Error loading state for session $sessionId: $e');
+      _logger.severe(
+        'Error loading state for session ${sessionId.length > 8 ? '${sessionId.substring(0, 8)}...' : sessionId}: $e',
+      );
       return null;
     }
   }

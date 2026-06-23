@@ -10,7 +10,7 @@ import 'package:logging/logging.dart';
 
 class ResponsesClient extends LLMClient {
   final Logger _logger = Logger('ResponsesClient');
-  final String apiKey;
+  final String _apiKey;
   final String baseUrl;
   final Dio _client;
   final Duration timeout;
@@ -33,7 +33,7 @@ class ResponsesClient extends LLMClient {
   final Set<String>? extraAllowedKeys;
 
   ResponsesClient({
-    required this.apiKey,
+    required String apiKey,
     this.baseUrl = 'https://api.openai.com',
     this.timeout = const Duration(seconds: 300),
     this.connectTimeout = const Duration(seconds: 60),
@@ -44,7 +44,8 @@ class ResponsesClient extends LLMClient {
     this.autoPreviousResponseId = true,
     this.extraAllowedKeys,
     Dio? client,
-  }) : _client = client ?? Dio() {
+  }) : _apiKey = apiKey,
+       _client = client ?? Dio() {
     configureProxy(_client, proxyUrl);
     _client.options.connectTimeout = connectTimeout;
   }
@@ -99,7 +100,7 @@ class ResponsesClient extends LLMClient {
             receiveTimeout: timeout,
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': 'Bearer $apiKey',
+              'Authorization': 'Bearer $_apiKey',
             },
             validateStatus: (code) => true,
           ),
@@ -127,7 +128,7 @@ class ResponsesClient extends LLMClient {
             }
           }
           throw Exception(
-            'Failed to generate from OpenAI Responses API: ${response.statusCode} ${response.statusMessage} ${response.data}',
+            'Failed to generate from OpenAI Responses API: status ${response.statusCode}',
           );
         }
       } on DioException catch (e) {
@@ -151,7 +152,7 @@ class ResponsesClient extends LLMClient {
         options: Options(
           sendTimeout: connectTimeout,
           receiveTimeout: timeout,
-          headers: {'Authorization': 'Bearer $apiKey'},
+          headers: {'Authorization': 'Bearer $_apiKey'},
           validateStatus: (code) => true,
         ),
       );
@@ -229,7 +230,7 @@ class ResponsesClient extends LLMClient {
               receiveTimeout: timeout,
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer $apiKey',
+                'Authorization': 'Bearer $_apiKey',
               },
               validateStatus: (code) => true,
             ),

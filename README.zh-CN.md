@@ -39,7 +39,7 @@
 
 ```yaml
 dependencies:
-  dart_agent_core: ^1.0.13
+  dart_agent_core: ^2.0.2
 ```
 
 ---

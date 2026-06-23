@@ -39,7 +39,7 @@
 
 ```yaml
 dependencies:
-  dart_agent_core: ^1.0.13
+  dart_agent_core: ^2.0.2
 ```
 
 ---
@@ -154,6 +154,16 @@ final client = BedrockClaudeClient(
   region: 'us-east-1',
   accessKeyId: Platform.environment['AWS_ACCESS_KEY_ID'] ?? '',
   secretAccessKey: Platform.environment['AWS_SECRET_ACCESS_KEY'] ?? '',
+);
+```
+
+### Anthropic Claude (Direct)
+
+Directly calls the Anthropic Messages API, no AWS Bedrock needed.
+
+```dart
+final client = ClaudeClient(
+  apiKey: Platform.environment['ANTHROPIC_API_KEY'] ?? '',
 );
 ```
 

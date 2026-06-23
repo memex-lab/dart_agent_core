@@ -10,7 +10,7 @@ import 'package:logging/logging.dart';
 
 class OpenAIClient extends LLMClient {
   final Logger _logger = Logger('OpenAIClient');
-  final String apiKey;
+  final String _apiKey;
   final String baseUrl;
   final Dio _client;
   final Duration timeout;
@@ -21,7 +21,7 @@ class OpenAIClient extends LLMClient {
   final int maxRetryDelayMs;
 
   OpenAIClient({
-    required this.apiKey,
+    required String apiKey,
     this.baseUrl = 'https://api.openai.com',
     this.timeout = const Duration(seconds: 300),
     this.connectTimeout = const Duration(seconds: 60),
@@ -31,7 +31,8 @@ class OpenAIClient extends LLMClient {
         1000, // OpenAI might be faster/slower, defaulting to 1s start
     this.maxRetryDelayMs = 10000,
     Dio? client,
-  }) : _client = client ?? Dio() {
+  }) : _apiKey = apiKey,
+       _client = client ?? Dio() {
     configureProxy(_client, proxyUrl);
     _client.options.connectTimeout = connectTimeout;
   }
@@ -83,7 +84,7 @@ class OpenAIClient extends LLMClient {
             receiveTimeout: timeout,
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': 'Bearer $apiKey',
+              'Authorization': 'Bearer $_apiKey',
             },
             validateStatus: (code) => true,
           ),
@@ -109,7 +110,7 @@ class OpenAIClient extends LLMClient {
             }
           }
           throw Exception(
-            'Failed to generate from OpenAI: ${response.statusCode} ${response.statusMessage} ${response.data}',
+            'Failed to generate from OpenAI: status ${response.statusCode}',
           );
         }
       } on DioException catch (e) {
@@ -175,7 +176,7 @@ class OpenAIClient extends LLMClient {
               receiveTimeout: timeout,
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer $apiKey',
+                'Authorization': 'Bearer $_apiKey',
               },
               validateStatus: (code) => true,
             ),

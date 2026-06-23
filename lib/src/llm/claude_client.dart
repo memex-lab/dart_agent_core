@@ -20,7 +20,7 @@ import '../core/tool.dart';
 /// ```
 class ClaudeClient extends LLMClient {
   final Logger _logger = Logger('ClaudeClient');
-  final String apiKey;
+  final String _apiKey;
   final String baseUrl;
   final String anthropicVersion;
   final Dio _client;
@@ -32,7 +32,7 @@ class ClaudeClient extends LLMClient {
   final int maxRetryDelayMs;
 
   ClaudeClient({
-    required this.apiKey,
+    required String apiKey,
     this.baseUrl = 'https://api.anthropic.com',
     this.anthropicVersion = '2023-06-01',
     Dio? client,
@@ -41,12 +41,13 @@ class ClaudeClient extends LLMClient {
     this.maxRetries = 3,
     this.initialRetryDelayMs = 1000,
     this.maxRetryDelayMs = 10000,
-  }) : _client = client ?? Dio() {
+  }) : _apiKey = apiKey,
+       _client = client ?? Dio() {
     configureProxy(_client, proxyUrl);
   }
 
   Map<String, String> get _headers => {
-    'x-api-key': apiKey,
+    'x-api-key': _apiKey,
     'anthropic-version': anthropicVersion,
     'content-type': 'application/json',
   };
@@ -117,17 +118,17 @@ class ClaudeClient extends LLMClient {
           }
         }
 
-        final errorMsg = response.data.toString();
-        throw Exception('Claude API Error: ${response.statusCode} $errorMsg');
+        throw Exception('Claude API Error: status ${response.statusCode}');
       } on DioException catch (e) {
         if (retryCount < maxRetries) {
           await _waitForRetry(retryCount, 'DioException: ${e.message}');
           retryCount++;
           continue;
         }
-        final errorMsg = e.response?.data ?? e.message;
-        _logger.severe('Claude API Error: $errorMsg', e, e.stackTrace);
-        throw Exception('Claude API Error: $errorMsg');
+        _logger.warning('Claude API Error (${e.response?.statusCode})');
+        throw Exception(
+          'Claude API Error: status ${e.response?.statusCode ?? 'unknown'}',
+        );
       }
     }
   }
