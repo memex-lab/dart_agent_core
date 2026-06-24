@@ -142,7 +142,9 @@ class BedrockClaudeClient extends LLMClient {
         }
 
         // Throw for other errors or if max retries reached
-        throw Exception('Bedrock API Error: status ${response.statusCode}');
+        throw Exception(
+          'Bedrock API Error: ${response.statusCode} ${response.data}',
+        );
       } on DioException catch (e) {
         if (retryCount < maxRetries) {
           // Retry on network errors or timeouts
@@ -150,8 +152,9 @@ class BedrockClaudeClient extends LLMClient {
           retryCount++;
           continue;
         }
+        final errorMsg = e.response?.data ?? e.message;
         _logger.warning('Bedrock API Error (${e.response?.statusCode})');
-        throw Exception('Bedrock API Error: ${e.message}');
+        throw Exception('Bedrock API Error: $errorMsg');
       }
     }
   }
@@ -296,7 +299,7 @@ class BedrockClaudeClient extends LLMClient {
             continue;
           }
           final errorMsg = e.response?.data ?? e.message;
-          _logger.severe('Bedrock Stream Error: $errorMsg', e, e.stackTrace);
+          _logger.warning('Bedrock Stream Error (${e.response?.statusCode})');
           throw Exception('Bedrock Stream Error: $errorMsg');
         }
         rethrow;

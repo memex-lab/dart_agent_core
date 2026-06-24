@@ -128,7 +128,7 @@ class ResponsesClient extends LLMClient {
             }
           }
           throw Exception(
-            'Failed to generate from OpenAI Responses API: status ${response.statusCode}',
+            'Failed to generate from OpenAI Responses API: ${response.statusCode} ${response.statusMessage} ${response.data}',
           );
         }
       } on DioException catch (e) {

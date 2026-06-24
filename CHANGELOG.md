@@ -2,8 +2,8 @@
 
 - **Security hardening** — comprehensive audit and fix of credential handling, error exposure, and logging:
   - **Gemini**: move API key from URL query string to `x-goog-api-key` header (prevents exposure in server/proxy logs).
-  - **All clients**: remove raw API response bodies from thrown exception messages; use status codes only.
-  - **Claude / Bedrock**: downgrade error response logging from `SEVERE` to `WARNING` to avoid exposing sensitive data in production logs.
+  - **All clients**: keep provider error response bodies in thrown exceptions so callers can debug 4xx request issues.
+  - **Claude / Bedrock**: avoid logging raw provider error bodies; log status context while preserving error details in exceptions.
   - **All clients**: make `apiKey` fields private (`_apiKey`); Bedrock `accessKeyId` / `secretAccessKey` also privatized.
   - **Gemini**: fix `maxRetryDelayMs` default (was 3000, now 30000 — previous value was less than `initialRetryDelayMs`, defeating the cap).
   - **FileStateStorage / RecordingStore**: truncate session/hash IDs in error log messages to prevent enumeration.

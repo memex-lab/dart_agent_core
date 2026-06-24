@@ -118,17 +118,18 @@ class ClaudeClient extends LLMClient {
           }
         }
 
-        throw Exception('Claude API Error: status ${response.statusCode}');
+        throw Exception(
+          'Claude API Error: ${response.statusCode} ${response.data}',
+        );
       } on DioException catch (e) {
         if (retryCount < maxRetries) {
           await _waitForRetry(retryCount, 'DioException: ${e.message}');
           retryCount++;
           continue;
         }
+        final errorMsg = e.response?.data ?? e.message;
         _logger.warning('Claude API Error (${e.response?.statusCode})');
-        throw Exception(
-          'Claude API Error: status ${e.response?.statusCode ?? 'unknown'}',
-        );
+        throw Exception('Claude API Error: $errorMsg');
       }
     }
   }
@@ -210,7 +211,7 @@ class ClaudeClient extends LLMClient {
             continue;
           }
           final errorMsg = e.response?.data ?? e.message;
-          _logger.severe('Claude Stream Error: $errorMsg', e, e.stackTrace);
+          _logger.warning('Claude Stream Error (${e.response?.statusCode})');
           throw Exception('Claude Stream Error: $errorMsg');
         }
         rethrow;

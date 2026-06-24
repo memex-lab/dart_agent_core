@@ -130,7 +130,7 @@ class GeminiClient extends LLMClient {
             }
           }
           throw Exception(
-            'Failed to generate from Gemini: status ${response.statusCode}',
+            'Failed to generate from Gemini: ${response.statusCode} ${response.statusMessage} ${response.data}',
           );
         }
       } on DioException catch (e) {
@@ -233,8 +233,11 @@ class GeminiClient extends LLMClient {
               }
             }
 
+            final responseBody = await utf8.decodeStream(
+              (response.data.stream as Stream).cast<List<int>>(),
+            );
             throw Exception(
-              'Failed to stream from Gemini: status ${response.statusCode}',
+              'Failed to stream from Gemini: ${response.statusCode} ${response.statusMessage} $responseBody',
             );
           }
 
