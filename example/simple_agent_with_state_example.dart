@@ -34,7 +34,7 @@ void main() async {
 
   // 2. Set up FileStateStorage to persist to a local directory
   final stateDir = Directory('${Directory.current.path}/.state_dir');
-  final storage = FileStateStorage(stateDir);
+  final storage = FileStateStorage(stateDir.path);
 
   // 3. Load an existing state (by session/user ID) or create a new one
   final state = await storage.loadOrCreate("session_123", {

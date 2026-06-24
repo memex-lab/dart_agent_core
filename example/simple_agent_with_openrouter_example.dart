@@ -69,7 +69,9 @@ void main() async {
       case StreamingEventType.functionCallResult:
         final result = event.data as FunctionExecutionResultMessage;
         for (final r in result.results) {
-          print('[tool result] ${r.name}: ${r.content.map((p) => p is TextPart ? p.text : '...').join()}');
+          print(
+            '[tool result] ${r.name}: ${r.content.map((p) => p is TextPart ? p.text : '...').join()}',
+          );
         }
         break;
       default:

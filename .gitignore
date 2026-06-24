@@ -16,3 +16,4 @@ build/
 .eval_reports/
 .eval_traces/
 .eval_recordings/
+reports/

@@ -211,8 +211,9 @@ String _previewText(Map<String, dynamic> j) {
   if (c is List) {
     final parts = c
         .map((p) {
-          if (p is Map && p['type'] == 'text')
+          if (p is Map && p['type'] == 'text') {
             return p['text']?.toString() ?? '';
+          }
           if (p is Map && p['text'] is String) return p['text'];
           return '<${(p as Map?)?['type'] ?? "?"}>';
         })

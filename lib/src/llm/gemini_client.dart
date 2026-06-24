@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:dio/dio.dart';
 import '../core/http_util.dart';
@@ -12,7 +11,7 @@ import 'package:logging/logging.dart';
 final Logger _geminiLogger = Logger('GeminiClient');
 
 class GeminiClient extends LLMClient {
-  final String apiKey;
+  final String _apiKey;
   final Dio _client;
   final Duration timeout;
   final Duration connectTimeout;
@@ -22,15 +21,16 @@ class GeminiClient extends LLMClient {
   final int maxRetryDelayMs;
 
   GeminiClient({
-    required this.apiKey,
+    required String apiKey,
     Dio? client,
     this.timeout = const Duration(seconds: 300),
     this.connectTimeout = const Duration(seconds: 60),
     this.proxyUrl,
     this.maxRetries = 3,
     this.initialRetryDelayMs = 5000,
-    this.maxRetryDelayMs = 3000,
-  }) : _client = client ?? Dio() {
+    this.maxRetryDelayMs = 30000,
+  }) : _apiKey = apiKey,
+       _client = client ?? Dio() {
     configureProxy(_client, proxyUrl);
     _client.options.connectTimeout = connectTimeout;
   }
@@ -53,7 +53,7 @@ class GeminiClient extends LLMClient {
     );
     final model = modelConfig.model;
     final url =
-        'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey';
+        'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent';
     int retryCount = 0;
     int currentDelayMs = initialRetryDelayMs;
 
@@ -81,7 +81,10 @@ class GeminiClient extends LLMClient {
           options: Options(
             sendTimeout: timeout,
             receiveTimeout: timeout,
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': _apiKey,
+            },
             validateStatus: (code) => true,
           ),
           cancelToken: cancelToken,
@@ -151,9 +154,9 @@ class GeminiClient extends LLMClient {
   }) async {
     final model = modelConfig.model;
     final url =
-        'https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?key=$apiKey';
+        'https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent';
 
-    final body_json = _createRequestBody(
+    final bodyJson = _createRequestBody(
       messages,
       tools: tools,
       toolChoice: toolChoice,
@@ -188,12 +191,15 @@ class GeminiClient extends LLMClient {
 
           final response = await _client.post(
             url,
-            data: body_json,
+            data: bodyJson,
             options: Options(
               responseType: ResponseType.stream,
               sendTimeout: timeout,
               receiveTimeout: timeout,
-              headers: {'Content-Type': 'application/json'},
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': _apiKey,
+              },
               validateStatus: (code) => true,
             ),
             cancelToken: cancelToken,
@@ -296,38 +302,6 @@ class GeminiClient extends LLMClient {
           controller.addError(e);
           controller.close();
           break;
-        } on SocketException catch (e) {
-          if (retryCount < maxRetries) {
-            await waitForRetry('SocketException: ${e.message}');
-            controller.add(
-              StreamingMessage(
-                controlMessage: StreamingControlMessage(
-                  controlFlag: StreamingControlFlag.retry,
-                  data: {'retryReason': 'SocketException: ${e.message}'},
-                ),
-              ),
-            );
-            continue;
-          }
-          controller.addError(e);
-          controller.close();
-          break;
-        } on HttpException catch (e) {
-          if (retryCount < maxRetries) {
-            await waitForRetry('HttpException: ${e.message}');
-            controller.add(
-              StreamingMessage(
-                controlMessage: StreamingControlMessage(
-                  controlFlag: StreamingControlFlag.retry,
-                  data: {'retryReason': 'HttpException: ${e.message}'},
-                ),
-              ),
-            );
-            continue;
-          }
-          controller.addError(e);
-          controller.close();
-          break;
         } catch (e) {
           controller.addError(e);
           controller.close();
@@ -350,10 +324,11 @@ Map<String, dynamic> _createRequestBody(
 }) {
   final contents = messages.where((m) => m is! SystemMessage).map((m) {
     String role = 'user';
-    if (m is ModelMessage)
+    if (m is ModelMessage) {
       role = 'model';
-    else if (m is FunctionExecutionResultMessage)
+    } else if (m is FunctionExecutionResultMessage) {
       role = 'function';
+    }
 
     List<Map<String, dynamic>> parts = [];
 

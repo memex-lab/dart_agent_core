@@ -51,7 +51,9 @@ void main() async {
   });
 
   controller.on<BeforeToolCallEvent>((event) {
-    print('[Controller] Tool call: ${event.functionCall.name}(${event.functionCall.arguments})');
+    print(
+      '[Controller] Tool call: ${event.functionCall.name}(${event.functionCall.arguments})',
+    );
   });
 
   controller.on<AfterToolCallEvent>((event) {
@@ -71,18 +73,18 @@ void main() async {
   });
 
   // 3. Request/Response pattern: block dangerous tool calls
-  controller.registerHandler<BeforeToolCallRequest, BeforeToolCallResponse>(
-    (request) async {
-      if (request.functionCall.name == 'delete_file') {
-        print('[Controller] BLOCKED: delete_file is not allowed!');
-        return BeforeToolCallResponse(
-          approve: false,
-          err: Exception('delete_file tool is blocked by policy'),
-        );
-      }
-      return BeforeToolCallResponse(approve: true);
-    },
-  );
+  controller.registerHandler<BeforeToolCallRequest, BeforeToolCallResponse>((
+    request,
+  ) async {
+    if (request.functionCall.name == 'delete_file') {
+      print('[Controller] BLOCKED: delete_file is not allowed!');
+      return BeforeToolCallResponse(
+        approve: false,
+        err: Exception('delete_file tool is blocked by policy'),
+      );
+    }
+    return BeforeToolCallResponse(approve: true);
+  });
 
   // 4. Create the agent with the controller
   final agent = StatefulAgent(

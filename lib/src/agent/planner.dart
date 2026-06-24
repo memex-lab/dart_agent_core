@@ -5,7 +5,15 @@ final _plannerLogger = Logger('planner');
 
 enum PlanMode { none, auto, must }
 
-enum StepStatus { pending, in_progress, completed, cancelled }
+enum StepStatus {
+  pending('pending'),
+  inProgress('in_progress'),
+  completed('completed'),
+  cancelled('cancelled');
+
+  final String name;
+  const StepStatus(this.name);
+}
 
 class PlanStep {
   final String description;
@@ -101,22 +109,10 @@ class Planner {
       final description = map['description'] as String;
       final statusStr = map['status'] as String;
 
-      StepStatus status;
-      switch (statusStr) {
-        case 'completed':
-          status = StepStatus.completed;
-          break;
-        case 'in_progress':
-          status = StepStatus.in_progress;
-          break;
-        case 'cancelled':
-          status = StepStatus.cancelled;
-          break;
-        case 'pending':
-        default:
-          status = StepStatus.pending;
-          break;
-      }
+      final status = StepStatus.values.firstWhere(
+        (e) => e.name == statusStr,
+        orElse: () => StepStatus.pending,
+      );
 
       return PlanStep(description: description, status: status);
     }).toList();
@@ -130,25 +126,8 @@ class Planner {
     buffer.writeln(
       "Successfully updated the todo list. The current list is now:",
     );
-    for (int i = 0; i < newSteps.length; i++) {
-      final step = newSteps[i];
-      final index = i + 1;
-      String statusText;
-      switch (step.status) {
-        case StepStatus.completed:
-          statusText = "completed";
-          break;
-        case StepStatus.in_progress:
-          statusText = "in_progress";
-          break;
-        case StepStatus.cancelled:
-          statusText = "cancelled";
-          break;
-        case StepStatus.pending:
-          statusText = "pending";
-          break;
-      }
-      buffer.writeln("$index. [$statusText] ${step.description}");
+    for (final (i, step) in newSteps.indexed) {
+      buffer.writeln("${i + 1}. [${step.status.name}] ${step.description}");
     }
 
     controller?.publish(PlanChangedEvent(agent, state.plan!));
@@ -170,7 +149,7 @@ class Planner {
         case StepStatus.completed:
           icon = "✅";
           break;
-        case StepStatus.in_progress:
+        case StepStatus.inProgress:
           icon = "👉";
           break;
         case StepStatus.cancelled:

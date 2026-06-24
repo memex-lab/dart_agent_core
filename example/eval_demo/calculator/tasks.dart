@@ -17,13 +17,11 @@ class _SimpleAdditionTask implements EvalTask {
   @override
   Map<String, dynamic> get input => {'prompt': 'What is 2 + 3?'};
 
-
   @override
   ReferenceSolution? get referenceSolution => const ReferenceSolution(
     expectedOutcome: {'submitted': true, 'declined': false, 'answer': '5'},
     source: ReferenceSolutionSource.manual,
   );
-
 
   @override
   Map<String, String> get metadata => const {
@@ -57,13 +55,11 @@ class _MultiStepTask implements EvalTask {
   @override
   Map<String, dynamic> get input => {'prompt': 'What is (12 * 7) - 18?'};
 
-
   @override
   ReferenceSolution? get referenceSolution => const ReferenceSolution(
     expectedOutcome: {'submitted': true, 'declined': false, 'answer': '66'},
     source: ReferenceSolutionSource.manual,
   );
-
 
   @override
   Map<String, String> get metadata => const {
@@ -100,13 +96,11 @@ class _OffTopicTask implements EvalTask {
     'prompt': 'What should I eat for dinner tomorrow?',
   };
 
-
   @override
   ReferenceSolution? get referenceSolution => const ReferenceSolution(
     expectedOutcome: {'submitted': false, 'declined': true},
     source: ReferenceSolutionSource.manual,
   );
-
 
   @override
   Map<String, String> get metadata => const {

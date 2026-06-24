@@ -68,7 +68,8 @@ EvalRunReport _buildRun({
     runName: name,
     suite: EvalSuite(
       name: 's',
-      agentName: 'agent_x',      kind: SuiteKind.regression,
+      agentName: 'agent_x',
+      kind: SuiteKind.regression,
       tasks: [
         for (final id in taskIds) _StubTask(id: id, graders: [_NoopGrader()]),
       ],
@@ -178,7 +179,8 @@ void main() {
           runName: 'oldest',
           suite: EvalSuite(
             name: 'one',
-            agentName: 'agent_x',            kind: SuiteKind.mixed,
+            agentName: 'agent_x',
+            kind: SuiteKind.mixed,
             tasks: [
               _StubTask(id: 'a', graders: [_NoopGrader()]),
             ],
@@ -201,7 +203,8 @@ void main() {
           runName: 'newest',
           suite: EvalSuite(
             name: 'two',
-            agentName: 'agent_x',            kind: SuiteKind.mixed,
+            agentName: 'agent_x',
+            kind: SuiteKind.mixed,
             tasks: [
               _StubTask(id: 'a', graders: [_NoopGrader()]),
             ],
