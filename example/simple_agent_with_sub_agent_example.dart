@@ -5,7 +5,8 @@ import 'package:dart_agent_core/dart_agent_core.dart';
 
 String searchWeb(String query) {
   final database = {
-    'dart language creator': 'Dart was created by Lars Bak and Kasper Lund at Google.',
+    'dart language creator':
+        'Dart was created by Lars Bak and Kasper Lund at Google.',
     'dart first release': 'Dart 1.0 was released on November 14, 2013.',
     'flutter first release': 'Flutter 1.0 was released on December 4, 2018.',
   };

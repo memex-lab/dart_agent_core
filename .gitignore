@@ -19,3 +19,4 @@ build/
 
 # Local agent state/logs
 .sharkbay/
+reports/

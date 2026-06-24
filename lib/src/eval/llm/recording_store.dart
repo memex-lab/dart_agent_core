@@ -84,7 +84,11 @@ class FileRecordingStore implements RecordingStore {
       final json = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
       return ModelMessage.fromJson(json);
     } catch (e, st) {
-      _logger.warning('failed to decode recording $hash', e, st);
+      _logger.warning(
+        'failed to decode recording ${hash.length > 8 ? '${hash.substring(0, 8)}...' : hash}',
+        e,
+        st,
+      );
       return null;
     }
   }

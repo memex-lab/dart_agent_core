@@ -15,8 +15,8 @@ import '../core/tool.dart';
 class BedrockClaudeClient extends LLMClient {
   final Logger _logger = Logger('BedrockClaudeClient');
   final String region;
-  final String accessKeyId;
-  final String secretAccessKey;
+  final String _accessKeyId;
+  final String _secretAccessKey;
   final String? sessionToken;
   final String? service;
   final Dio _client;
@@ -31,8 +31,8 @@ class BedrockClaudeClient extends LLMClient {
 
   BedrockClaudeClient({
     required this.region,
-    required this.accessKeyId,
-    required this.secretAccessKey,
+    required String accessKeyId,
+    required String secretAccessKey,
     this.sessionToken,
     this.service = 'bedrock',
     Dio? client,
@@ -41,11 +41,13 @@ class BedrockClaudeClient extends LLMClient {
     this.maxRetries = 3,
     this.initialRetryDelayMs = 1000,
     this.maxRetryDelayMs = 10000,
-  }) : _client = client ?? Dio() {
+  }) : _accessKeyId = accessKeyId,
+       _secretAccessKey = secretAccessKey,
+       _client = client ?? Dio() {
     configureProxy(_client, proxyUrl);
     _signer = AWSSigV4Signer(
       credentialsProvider: AWSCredentialsProvider(
-        AWSCredentials(accessKeyId, secretAccessKey, sessionToken),
+        AWSCredentials(_accessKeyId, _secretAccessKey, sessionToken),
       ),
     );
   }
@@ -140,8 +142,9 @@ class BedrockClaudeClient extends LLMClient {
         }
 
         // Throw for other errors or if max retries reached
-        final errorMsg = response.data.toString();
-        throw Exception('Bedrock API Error: ${response.statusCode} $errorMsg');
+        throw Exception(
+          'Bedrock API Error: ${response.statusCode} ${response.data}',
+        );
       } on DioException catch (e) {
         if (retryCount < maxRetries) {
           // Retry on network errors or timeouts
@@ -150,7 +153,7 @@ class BedrockClaudeClient extends LLMClient {
           continue;
         }
         final errorMsg = e.response?.data ?? e.message;
-        _logger.severe('Bedrock API Error: $errorMsg', e, e.stackTrace);
+        _logger.warning('Bedrock API Error (${e.response?.statusCode})');
         throw Exception('Bedrock API Error: $errorMsg');
       }
     }
@@ -296,7 +299,7 @@ class BedrockClaudeClient extends LLMClient {
             continue;
           }
           final errorMsg = e.response?.data ?? e.message;
-          _logger.severe('Bedrock Stream Error: $errorMsg', e, e.stackTrace);
+          _logger.warning('Bedrock Stream Error (${e.response?.statusCode})');
           throw Exception('Bedrock Stream Error: $errorMsg');
         }
         rethrow;

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:dart_agent_core/src/agent/controller.dart';
 import 'package:dart_agent_core/src/agent/events.dart';
 import 'package:dart_agent_core/src/agent/exception.dart';
@@ -9,6 +8,7 @@ import 'package:dart_agent_core/src/agent/loop_detector.dart';
 import 'package:dart_agent_core/src/agent/skill.dart';
 import 'package:dart_agent_core/src/agent/sub_agent.dart';
 import 'package:dart_agent_core/src/agent/util.dart';
+import 'package:dart_agent_core/src/core/fs.dart';
 
 import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
@@ -174,10 +174,10 @@ class AgentState {
 }
 
 class AgentCallToolContext {
-  static final ZoneKey = #AgentCallToolContext;
+  static final zoneKey = #AgentCallToolContext;
 
   static AgentCallToolContext? get current {
-    return Zone.current[ZoneKey] as AgentCallToolContext?;
+    return Zone.current[zoneKey] as AgentCallToolContext?;
   }
 
   final AgentState state;
@@ -392,8 +392,6 @@ typedef PostToolCallHook =
       FunctionExecutionResult result,
     );
 
-/// A stateful AI agent that orchestrates LLM calls, tool execution,
-/// skill management, and context compression.
 class StatefulAgent {
   final Logger _logger = Logger('StatefulAgent');
 
@@ -633,8 +631,8 @@ class StatefulAgent {
           name: 'RunJavaScript',
           description:
               'Execute a JavaScript (.js) script from the directory skill workspace.',
-          executable: (String script_path, String? args, int? timeout_ms) =>
-              _runJavaScriptScript(script_path, args, timeout_ms),
+          executable: (String scriptPath, String? args, int? timeoutMs) =>
+              _runJavaScriptScript(scriptPath, args, timeoutMs),
           parameters: {
             'type': 'object',
             'properties': {
@@ -703,19 +701,18 @@ class StatefulAgent {
       return 'Error: script_path must be an absolute path.';
     }
 
-    final root = Directory(skillDirectoryPath!).absolute.path;
-    final rootWithSep = root.endsWith(Platform.pathSeparator)
+    final root = fsAbsolutePath(skillDirectoryPath!);
+    final rootWithSep = root.endsWith(fsPathSeparator)
         ? root
-        : '$root${Platform.pathSeparator}';
-    final resolvedAbsolute = File(scriptPath).absolute.path;
+        : '$root$fsPathSeparator';
+    final resolvedAbsolute = fsAbsolutePath(scriptPath);
     if (resolvedAbsolute != root && !resolvedAbsolute.startsWith(rootWithSep)) {
       return 'Error: script path must stay under skillDirectoryPath.';
     }
     if (!resolvedAbsolute.toLowerCase().endsWith('.js')) {
       return 'Error: only .js script files are supported.';
     }
-    final scriptFile = File(resolvedAbsolute);
-    if (!scriptFile.existsSync()) {
+    if (!fsFileExistsSync(resolvedAbsolute)) {
       return 'Error: script file not found: $scriptPath';
     }
     Map<String, dynamic>? parsedArgs;
@@ -1737,7 +1734,7 @@ class StatefulAgent {
             return Function.apply(tool.executable!, positionalArgs, namedArgs);
           },
           zoneValues: {
-            AgentCallToolContext.ZoneKey: AgentCallToolContext(
+            AgentCallToolContext.zoneKey: AgentCallToolContext(
               state: state,
               agent: this,
               batchCallId: batchCallId,

@@ -47,7 +47,7 @@ final _delegateTaskTool = Tool(
 
 Future<AgentToolResult> _delegateTask(
   String assignee,
-  String task_description,
+  String taskDescription,
 ) async {
   final context = AgentCallToolContext.current!;
   final parentState = context.state;
@@ -127,7 +127,7 @@ You are currently running as a delegated **Sub-Agent** (Worker).
 
   final taskInput = [
     UserMessage.text(
-      "YOUR TASK DESCRIPTION:\n\"\"\"\n$task_description\n\"\"\"",
+      "YOUR TASK DESCRIPTION:\n\"\"\"\n$taskDescription\n\"\"\"",
     ),
   ];
 
@@ -142,7 +142,7 @@ You are currently running as a delegated **Sub-Agent** (Worker).
         content: TextPart("Sub-agent ($assignee) execution failed"),
         metadata: {
           "sub_agent_session_id": workerAgent.state.sessionId,
-          "task_description": task_description,
+          "task_description": taskDescription,
           "assignee": assignee,
           "status": "error",
         },
@@ -154,7 +154,7 @@ You are currently running as a delegated **Sub-Agent** (Worker).
       ),
       metadata: {
         "sub_agent_session_id": workerAgent.state.sessionId,
-        "task_description": task_description,
+        "task_description": taskDescription,
         "assignee": assignee,
         "status": "success",
       },
@@ -167,7 +167,7 @@ You are currently running as a delegated **Sub-Agent** (Worker).
       content: TextPart("Sub-agent $assignee execution failed: $e"),
       metadata: {
         "sub_agent_session_id": workerAgent.state.sessionId,
-        "task_description": task_description,
+        "task_description": taskDescription,
         "assignee": assignee,
         "status": "error",
       },

@@ -1,3 +1,26 @@
+## 2.0.2
+
+- **Security hardening** — comprehensive audit and fix of credential handling, error exposure, and logging:
+  - **Gemini**: move API key from URL query string to `x-goog-api-key` header (prevents exposure in server/proxy logs).
+  - **All clients**: keep provider error response bodies in thrown exceptions so callers can debug 4xx request issues.
+  - **Claude / Bedrock**: avoid logging raw provider error bodies; log status context while preserving error details in exceptions.
+  - **All clients**: make `apiKey` fields private (`_apiKey`); Bedrock `accessKeyId` / `secretAccessKey` also privatized.
+  - **Gemini**: fix `maxRetryDelayMs` default (was 3000, now 30000 — previous value was less than `initialRetryDelayMs`, defeating the cap).
+  - **FileStateStorage / RecordingStore**: truncate session/hash IDs in error log messages to prevent enumeration.
+
+## 2.0.1
+
+- **Fix**: `StepStatus` serialization — convert to enhanced enum with stable `name` field (`pending`/`in_progress`/`completed`/`cancelled`) to ensure backward-compatible JSON persistence regardless of Dart identifier naming.
+- Simplify planner code with Dart 3.0+ `.indexed` + pattern destructuring for indexed iteration, and `firstWhere` + `orElse` for status parsing.
+
+## 2.0.0
+
+- **Web & WASM support**: the package now supports all 6 platforms (iOS, Android, Web, Windows, macOS, Linux) and is WebAssembly-compatible. Platform-specific concerns (file-system state storage, HTTP adapters, JavaScript runtime) are resolved at compile time via conditional exports, so the public API is identical across native and web.
+- **BREAKING**: `FileStateStorage` now takes a `String directoryPath` instead of a `Directory`. Migrate `FileStateStorage(dir)` to `FileStateStorage(dir.path)`. On web, prefer an in-memory or `localStorage`-backed `StateStorage` rather than `FileStateStorage`.
+- Network errors from the OpenAI, Gemini, and Responses clients are now surfaced via `DioException` instead of `dart:io` `SocketException`, removing `dart:io` from the public reachable surface.
+- Add a Platform Support section (with a web-safe API-key snippet) to both READMEs.
+- Internal style cleanup: lowerCamelCase identifiers and braced flow-control statements; pana static-analysis now scores 50/50 (160/160 overall).
+
 ## 1.0.14
 
 - Add agent run lifecycle hooks.
