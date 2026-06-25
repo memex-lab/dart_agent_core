@@ -42,7 +42,7 @@ void main() async {
     },
   );
 
-  // 1. Create an AgentController to observe and control agent behavior
+  // 1. Create an AgentController to observe agent behavior
   final controller = AgentController();
 
   // 2. Observe events (Pub/Sub pattern)
@@ -72,21 +72,7 @@ void main() async {
     print('[Controller] Agent completed. Stop reason: ${event.stopReason}');
   });
 
-  // 3. Request/Response pattern: block dangerous tool calls
-  controller.registerHandler<BeforeToolCallRequest, BeforeToolCallResponse>((
-    request,
-  ) async {
-    if (request.functionCall.name == 'delete_file') {
-      print('[Controller] BLOCKED: delete_file is not allowed!');
-      return BeforeToolCallResponse(
-        approve: false,
-        err: Exception('delete_file tool is blocked by policy'),
-      );
-    }
-    return BeforeToolCallResponse(approve: true);
-  });
-
-  // 4. Create the agent with the controller
+  // 3. Create the agent with controller observation and hook control
   final agent = StatefulAgent(
     name: 'controlled_agent',
     client: client,
@@ -95,16 +81,25 @@ void main() async {
     tools: [readTool, deleteTool],
     systemPrompts: ['You are a file management assistant.'],
     controller: controller,
+    hooks: [DeleteFilePolicyHook()],
   );
 
   print('Asking agent to read and then delete a file...\n');
-  try {
-    final responses = await agent.run([
-      UserMessage.text('First read the file at /tmp/data.txt, then delete it.'),
-    ]);
-    print('\nAgent response: ${(responses.last as ModelMessage).textOutput}');
-  } on AgentException catch (e) {
-    // The controller blocked delete_file, which stops the agent
-    print('\nAgent stopped: ${e.message}');
+  final responses = await agent.run([
+    UserMessage.text('First read the file at /tmp/data.txt, then delete it.'),
+  ]);
+  print('\nAgent response: ${(responses.last as ModelMessage).textOutput}');
+}
+
+class DeleteFilePolicyHook extends AgentHook {
+  @override
+  ToolCallHookResult beforeToolCall(ToolCallHookContext context) {
+    if (context.call.name != 'delete_file') {
+      return ToolCallHookResult.proceed(context.call);
+    }
+    print('[Hook] BLOCKED: delete_file is not allowed!');
+    return ToolCallHookResult.deny(
+      content: [TextPart('delete_file is blocked by local policy.')],
+    );
   }
 }

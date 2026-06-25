@@ -2,33 +2,10 @@
 
 import 'package:dart_agent_core/dart_agent_core.dart';
 
-class BeforeRunAgentRequest extends Event {
-  final StatefulAgent agent;
-  final List<LLMMessage> input;
-  BeforeRunAgentRequest(this.agent, this.input);
-}
-
-class BeforeRunAgentResponse {
-  final Exception? err;
-  final bool stop;
-  BeforeRunAgentResponse({this.err, this.stop = false});
-}
-
 class AgentStartedEvent extends Event {
   final StatefulAgent agent;
   final List<LLMMessage> input;
   AgentStartedEvent(this.agent, this.input);
-}
-
-class ResumeAgentRequest extends Event {
-  final StatefulAgent agent;
-  ResumeAgentRequest(this.agent);
-}
-
-class ResumeAgentResponse {
-  final Exception? err;
-  final bool stop;
-  ResumeAgentResponse({this.err, this.stop = false});
 }
 
 class AgentResumedEvent extends Event {
@@ -68,18 +45,6 @@ class OnAgentCancelEvent extends Event {
   OnAgentCancelEvent(this.agent, this.exception, this.reason);
 }
 
-class BeforeCallLLMRequest extends Event {
-  final StatefulAgent agent;
-  final CallLLMParams params;
-  BeforeCallLLMRequest(this.agent, this.params);
-}
-
-class BeforeCallLLMResponse {
-  final Exception? err;
-  final bool approve;
-  BeforeCallLLMResponse({this.err, this.approve = true});
-}
-
 class BeforeCallLLMEvent extends Event {
   final StatefulAgent agent;
   final CallLLMParams params;
@@ -107,34 +72,10 @@ class LLMRetryingEvent extends Event {
   LLMRetryingEvent(this.agent, this.reason);
 }
 
-class BeforeToolCallRequest extends Event {
-  final StatefulAgent agent;
-  final FunctionCall functionCall;
-  BeforeToolCallRequest(this.agent, this.functionCall);
-}
-
-class BeforeToolCallResponse {
-  final Exception? err;
-  final bool approve;
-  BeforeToolCallResponse({this.err, this.approve = true});
-}
-
 class BeforeToolCallEvent extends Event {
   final StatefulAgent agent;
   final FunctionCall functionCall;
   BeforeToolCallEvent(this.agent, this.functionCall);
-}
-
-class AfterToolCallRequest extends Event {
-  final StatefulAgent agent;
-  final FunctionExecutionResult result;
-  AfterToolCallRequest(this.agent, this.result);
-}
-
-class AfterToolCallResponse {
-  final Exception? err;
-  final bool stop;
-  AfterToolCallResponse({this.err, this.stop = false});
 }
 
 class AfterToolCallEvent extends Event {

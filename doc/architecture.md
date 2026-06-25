@@ -8,12 +8,13 @@
 
 1. **Compress context** (optional): If a `ContextCompressor` is attached and the token threshold is exceeded, old messages are compressed into episodic memory before the call is made.
 2. **Compose request**: The system message and tool list are assembled dynamically from system prompts, active skills, planner tools, sub-agent tools, and memory tools.
-3. **System callback** (optional): If a `systemCallback` is provided, it runs here and can modify the system message, tools, or request messages before the LLM call.
-4. **Call LLM**: The formatted message history is sent to the chosen `LLMClient`.
-5. **Handle response**:
+3. **Run `beforeModelCall` hooks** (optional): Hooks can rewrite the system message, request messages, tools, tool choice, model config, or return a synthetic model response. If a hook wants data to survive later turns or resume, it can write to `context.state`.
+4. **Call LLM**: The formatted message history is sent to the chosen `LLMClient`, unless a hook supplied a synthetic response.
+5. **Run model response hooks** (optional): Streaming chunks pass through `onModelChunk`; the assembled response passes through `afterModelCall`, which can rewrite, retry, or abort.
+6. **Handle response**:
    - If the model returns no tool calls, the loop ends and the final `ModelMessage` is returned.
-   - If the model requests one or more `FunctionCall`s, the agent executes the corresponding `Tool` functions (in parallel), appends the results to history, and loops back to step 1.
-6. **Stop conditions**: The loop exits on: no tool calls, a tool returning `stopFlag = true`, `AgentException` (loop detected, cancelled, stopped by controller), or an unhandled exception.
+   - If the model requests one or more `FunctionCall`s, `beforeToolCall` hooks can allow, rewrite, deny, defer, or abort each call. Executed and synthetic results are appended to history, `afterToolCall` hooks can rewrite results or inject follow-up context, and the loop returns to step 1.
+7. **Stop conditions**: The loop exits on: no tool calls, a tool returning `stopFlag = true`, a hook returning stop/abort, `AgentException` (loop detected, cancelled, stopped by hook), or an unhandled exception.
 
 ### Streaming Lifecycle
 
@@ -52,9 +53,9 @@ await for (final event in agent.runStream([UserMessage.text('Do XYZ')])) {
 
 ---
 
-## `AgentController` Event Hooks
+## `AgentController` Events
 
-Attach an `AgentController` to intercept and react to lifecycle events. The controller supports two patterns:
+Attach an `AgentController` to observe lifecycle events. Controller events are for UI updates, tracing, metrics, and diagnostics; they do not control the agent loop.
 
 **Pub/Sub (fire and forget):**
 
@@ -79,50 +80,64 @@ controller.on<PlanChangedEvent>((event) {
 final agent = StatefulAgent(..., controller: controller);
 ```
 
-**Request/Response (approve or stop):**
-
-Register a handler to approve or block specific steps. If no handler is registered, the agent proceeds with the default (approve).
-
-```dart
-controller.registerHandler<BeforeToolCallRequest, BeforeToolCallResponse>(
-  (request) async {
-    if (request.functionCall.name == 'delete_files') {
-      // Block dangerous tool calls
-      return BeforeToolCallResponse(approve: false);
-    }
-    return BeforeToolCallResponse(approve: true);
-  },
-);
-```
-
-Available request/response pairs:
-
-| Request | Response | Triggered |
-|---------|----------|-----------|
-| `BeforeRunAgentRequest` | `BeforeRunAgentResponse` | Before the agent loop starts |
-| `ResumeAgentRequest` | `ResumeAgentResponse` | Before resuming a suspended agent |
-| `BeforeCallLLMRequest` | `BeforeCallLLMResponse` | Before each LLM call |
-| `BeforeToolCallRequest` | `BeforeToolCallResponse` | Before each tool call |
-| `AfterToolCallRequest` | `AfterToolCallResponse` | After each tool call (can stop loop) |
-
 ---
 
-## `systemCallback`
+## `AgentHook`
 
-A lower-level interception point that runs before every LLM call. It receives the current system message, tools, and request messages, and can return modified versions:
+Use `AgentHook` for controlled changes to the loop. Hook outcomes are typed, so a hook can explicitly proceed, respond, retry, deny, defer, stop, continue, or abort depending on the phase.
 
 ```dart
-final agent = StatefulAgent(
-  ...
-  systemCallback: (agent, systemMessage, tools, messages) async {
-    // Inject dynamic context into the system message
-    final updatedSystem = SystemMessage(
-      '${systemMessage?.content ?? ''}\n\nCurrent time: ${DateTime.now()}',
+class RuntimeContextHook extends AgentHook {
+  @override
+  ModelCallHookResult beforeModelCall(ModelCallHookContext context) {
+    final transientMessage = UserMessage.text(
+      'Current time: ${DateTime.now()}',
     );
-    return (updatedSystem, tools, messages);
-  },
+
+    return ModelCallHookResult.proceed(
+      request: context.request.copyWith(
+        requestMessages: [
+          ...context.request.requestMessages,
+          transientMessage,
+        ],
+      ),
+    );
+  }
+}
+
+class ToolPolicyHook extends AgentHook {
+  @override
+  ToolCallHookResult beforeToolCall(ToolCallHookContext context) {
+    if (context.call.name != 'delete_file') {
+      return ToolCallHookResult.proceed(context.call);
+    }
+    return ToolCallHookResult.deny(
+      content: [TextPart('delete_file is blocked by local policy.')],
+    );
+  }
+}
+
+final agent = StatefulAgent(
+  ...,
+  hooks: [RuntimeContextHook(), ToolPolicyHook()],
 );
 ```
+
+To affect only the current model call, rewrite `ModelCallRequest.requestMessages`. To persist hook-created context for later loops or resume, write to `context.state.history.messages`.
+
+Available hook phases:
+
+| Phase | Typical controls |
+|-------|------------------|
+| `beforeRun` | Rewrite initial input or abort |
+| `beforeModelCall` | Rewrite model request, return synthetic response, or abort |
+| `onModelChunk` | Rewrite/drop streaming chunks or abort |
+| `afterModelCall` | Rewrite final response, retry, or abort |
+| `beforeToolCall` | Rewrite call, deny/defer with synthetic result, or abort |
+| `afterToolCall` | Rewrite result, inject context, stop, or abort |
+| `onTurnCompletion` | Accept final answer, continue with messages, or abort |
+| `beforePersistState` / `afterPersistState` | Wrap `autoSaveStateFunc`, skip save, or abort |
+| `afterRun` | Observe final input, model messages, and error |
 
 ---
 
