@@ -1,3 +1,11 @@
+## 2.0.3
+
+- **BREAKING**: replace `systemCallback`, legacy pre/post tool hooks, turn-completion hooks, and controller request/response loop controls with the unified `AgentHook` pipeline. `AgentController` is now used for observation events; flow control belongs in hooks.
+- Add typed hook phases for `beforeRun`, `beforeModelCall`, `onModelChunk`, `afterModelCall`, `beforeToolCall`, `afterToolCall`, `onTurnCompletion`, `beforePersistState`, `afterPersistState`, and `afterRun`.
+- Hooks can rewrite current model requests without persistence, or directly mutate `context.state` when data should survive later turns or resume. `ModelCallHookResult.messagesToPersist` was removed so hook outcomes only describe flow control.
+- Add hook-focused tests and runnable examples covering model input rewriting, synthetic model responses, streaming chunk transforms, model retries, tool deny/defer/rewrite/stop, final-turn continuation, abort handling, and state persistence hooks.
+- `resume()` / `resumeStream()` now accept `cancelToken`, `useStream`, and `maxTurns`, matching `run()` / `runStream()` controls.
+
 ## 2.0.2
 
 - **Security hardening** — comprehensive audit and fix of credential handling, error exposure, and logging:

@@ -20,6 +20,8 @@ import 'context_compressor.dart';
 import 'planner.dart';
 import 'memory.dart';
 
+part 'agent_hook.dart';
+
 class SystemPromptPart {
   final String name;
   final String content;
@@ -45,6 +47,156 @@ class SystemPromptHistoryItem {
     return SystemPromptHistoryItem(
       content: json['content'],
       validFromMessageIndex: json['validFromMessageIndex'],
+    );
+  }
+}
+
+class _PreparedModelCallPhase {
+  final ModelCallRequest request;
+  final CallLLMParams params;
+  final ModelMessage? syntheticResponse;
+  final int systemPromptHash;
+  final int toolsHash;
+
+  const _PreparedModelCallPhase({
+    required this.request,
+    required this.params,
+    required this.syntheticResponse,
+    required this.systemPromptHash,
+    required this.toolsHash,
+  });
+}
+
+class _PromptToolHistoryHashes {
+  final int systemPromptHash;
+  final int toolsHash;
+
+  const _PromptToolHistoryHashes({
+    required this.systemPromptHash,
+    required this.toolsHash,
+  });
+}
+
+class _AfterModelCallPhase {
+  final ModelMessage? response;
+  final String? retryReason;
+
+  const _AfterModelCallPhase.proceed(ModelMessage this.response)
+    : retryReason = null;
+
+  const _AfterModelCallPhase.retry(String this.retryReason) : response = null;
+
+  bool get shouldRetry => retryReason != null;
+}
+
+class _TurnCompletionPhase {
+  final List<LLMMessage> messages;
+
+  const _TurnCompletionPhase.accept() : messages = const [];
+
+  const _TurnCompletionPhase.continueWith(this.messages);
+
+  bool get shouldContinue => messages.isNotEmpty;
+}
+
+class _ToolCallPhase {
+  final FunctionExecutionResultMessage message;
+  final List<LLMMessage> injectedMessages;
+  final bool shouldStop;
+
+  const _ToolCallPhase({
+    required this.message,
+    required this.injectedMessages,
+    required this.shouldStop,
+  });
+}
+
+class _ModelMessageAccumulator {
+  final StringBuffer _text = StringBuffer();
+  final StringBuffer _thought = StringBuffer();
+  final List<Map<String, dynamic>> _contentBlocks = [];
+  final List<FunctionCall> _functionCalls = [];
+  final List<ModelImagePart> _imageOutputs = [];
+  final List<ModelVideoPart> _videoOutputs = [];
+  final List<ModelAudioPart> _audioOutputs = [];
+  String? stopReason;
+  ModelUsage? usage;
+  String? thoughtSignature;
+  String? responseId;
+  Map<String, dynamic>? metadata;
+
+  bool get isEmptyResponse =>
+      _functionCalls.isEmpty && _text.isEmpty && responseId == null;
+
+  void add(ModelMessage chunk) {
+    if (chunk.textOutput != null) {
+      _text.write(chunk.textOutput);
+    }
+    if (chunk.functionCalls.isNotEmpty) {
+      _functionCalls.addAll(chunk.functionCalls);
+    }
+    if (chunk.contentBlocks.isNotEmpty) {
+      _contentBlocks.addAll(chunk.contentBlocks);
+    }
+    if (chunk.imageOutputs.isNotEmpty) {
+      _imageOutputs.addAll(chunk.imageOutputs);
+    }
+    if (chunk.videoOutputs.isNotEmpty) {
+      _videoOutputs.addAll(chunk.videoOutputs);
+    }
+    if (chunk.audioOutputs.isNotEmpty) {
+      _audioOutputs.addAll(chunk.audioOutputs);
+    }
+    if (chunk.stopReason != null) {
+      stopReason = chunk.stopReason;
+    }
+    if (chunk.usage != null) {
+      usage = chunk.usage;
+    }
+    if (chunk.metadata != null) {
+      metadata = chunk.metadata;
+    }
+    if (chunk.thought != null) {
+      _thought.write(chunk.thought!);
+    }
+    if (chunk.thoughtSignature != null) {
+      thoughtSignature = chunk.thoughtSignature;
+    }
+    if (chunk.responseId != null) {
+      responseId = chunk.responseId;
+    }
+  }
+
+  void reset() {
+    _text.clear();
+    _thought.clear();
+    _contentBlocks.clear();
+    _functionCalls.clear();
+    _imageOutputs.clear();
+    _videoOutputs.clear();
+    _audioOutputs.clear();
+    stopReason = null;
+    usage = null;
+    thoughtSignature = null;
+    responseId = null;
+    metadata = null;
+  }
+
+  ModelMessage toModelMessage(String model) {
+    return ModelMessage(
+      textOutput: _text.isNotEmpty ? _text.toString() : null,
+      functionCalls: _functionCalls,
+      contentBlocks: _contentBlocks,
+      imageOutputs: _imageOutputs,
+      videoOutputs: _videoOutputs,
+      audioOutputs: _audioOutputs,
+      stopReason: stopReason,
+      usage: usage,
+      metadata: metadata,
+      model: model,
+      thought: _thought.isNotEmpty ? _thought.toString() : null,
+      thoughtSignature: thoughtSignature,
+      responseId: responseId,
     );
   }
 }
@@ -243,155 +395,6 @@ class CallLLMParams {
   });
 }
 
-/// Result of [SystemCallback], containing the potentially modified system message,
-/// tools, and request messages.
-class SystemCallbackResult {
-  final SystemMessage? systemMessage;
-  final List<Tool> tools;
-  final List<LLMMessage> requestMessages;
-
-  SystemCallbackResult({
-    required this.systemMessage,
-    required this.tools,
-    required this.requestMessages,
-  });
-}
-
-/// Callback type for intercepting and modifying system_message, tools, and request_messages
-/// before each LLM call. Receives the StatefulAgent instance as the first argument.
-typedef SystemCallback =
-    Future<SystemCallbackResult> Function(
-      StatefulAgent agent,
-      SystemMessage? systemMessage,
-      List<Tool> tools,
-      List<LLMMessage> requestMessages,
-    );
-
-/// The decision a [TurnCompletionHook] makes when the model finishes a turn
-/// with no tool calls (i.e. the loop is about to break/finalize).
-enum TurnCompletionDecision {
-  /// Accept the completion and break the run loop, exactly like the default
-  /// behavior when no hook is configured.
-  accept,
-
-  /// Reject the completion and continue the run loop by appending a follow-up
-  /// [UserMessage] (carried in [TurnCompletionResult.followUpMessage]).
-  continueRun,
-}
-
-/// Result of a [TurnCompletionHook]. Use [TurnCompletionResult.accept] to let
-/// the run finalize as usual, or [TurnCompletionResult.continueWith] to inject
-/// a follow-up user message and keep looping.
-class TurnCompletionResult {
-  final TurnCompletionDecision decision;
-
-  /// The follow-up message appended to history when [decision] is
-  /// [TurnCompletionDecision.continueRun]. Ignored otherwise.
-  final UserMessage? followUpMessage;
-
-  /// Accept the model's completion; the run loop breaks as it does by default.
-  const TurnCompletionResult.accept()
-    : decision = TurnCompletionDecision.accept,
-      followUpMessage = null;
-
-  /// Continue the run loop with [followUpMessage] appended to history. The
-  /// continuation still counts toward the existing turn cap and toward the
-  /// hook's own continuation budget ([StatefulAgent.maxTurnContinuations]).
-  const TurnCompletionResult.continueWith(this.followUpMessage)
-    : decision = TurnCompletionDecision.continueRun;
-}
-
-/// Hook invoked when the model returns a message with NO tool calls and the run
-/// loop is about to finalize. It can accept the completion (default break) or
-/// request a continuation by returning a follow-up [UserMessage].
-///
-/// Continuations are bounded by [StatefulAgent.maxTurnContinuations] and still
-/// count toward the existing turn/loop cap, so a misbehaving hook cannot loop
-/// forever. When the hook is null, the loop breaks exactly as before.
-typedef TurnCompletionHook =
-    Future<TurnCompletionResult> Function(
-      StatefulAgent agent,
-      AgentState state,
-      ModelMessage finalMessage,
-    );
-
-/// The action a [PreToolCallHook] takes for a single tool call.
-enum PreToolCallAction {
-  /// Execute the tool, optionally with rewritten arguments.
-  proceed,
-
-  /// Skip execution and return a synthetic tool result instead. The framework
-  /// invariant that every tool call yields a tool result is preserved.
-  deny,
-}
-
-/// Result of a [PreToolCallHook] for one tool call.
-class PreToolCallResult {
-  final PreToolCallAction action;
-
-  /// When [action] is [PreToolCallAction.proceed] and non-null, replaces the
-  /// tool call's JSON argument string before execution.
-  final String? rewrittenArguments;
-
-  /// When [action] is [PreToolCallAction.deny], the synthetic tool-result
-  /// content fed back to the model. Defaults to a generic denial text.
-  final List<UserContentPart>? denyResultContent;
-
-  /// Whether the synthetic denied result is flagged as an error result.
-  final bool denyIsError;
-
-  /// Allow the tool to run, optionally rewriting its [rewrittenArguments].
-  const PreToolCallResult.proceed({this.rewrittenArguments})
-    : action = PreToolCallAction.proceed,
-      denyResultContent = null,
-      denyIsError = false;
-
-  /// Deny the tool call and feed [resultContent] back as a synthetic tool
-  /// result so the model still receives a result for the call.
-  const PreToolCallResult.deny({
-    List<UserContentPart>? resultContent,
-    bool isError = true,
-  }) : action = PreToolCallAction.deny,
-       rewrittenArguments = null,
-       denyResultContent = resultContent,
-       denyIsError = isError;
-}
-
-/// Hook invoked before each tool executes. It can allow the call as-is, allow
-/// it with rewritten arguments, or deny it with a synthetic tool result.
-///
-/// Unlike the controller's [BeforeToolCallRequest] (binary approve/deny that
-/// aborts the whole run), denying here keeps the run alive and still produces a
-/// tool result. When null, behavior is unchanged.
-typedef PreToolCallHook =
-    Future<PreToolCallResult> Function(
-      StatefulAgent agent,
-      AgentState state,
-      FunctionCall call,
-    );
-
-/// Result of a [PostToolCallHook] for one tool result.
-class PostToolCallResult {
-  /// Optional follow-up reminder injected into history (before the next LLM
-  /// call) after the tool result. Null means "no reminder".
-  final UserMessage? reminderMessage;
-
-  const PostToolCallResult({this.reminderMessage});
-}
-
-/// Hook invoked after each tool executes. It can update external state and
-/// optionally return a follow-up reminder [UserMessage] to inject before the
-/// next LLM call.
-///
-/// Unlike the controller's [AfterToolCallRequest] (binary stop), this can
-/// inject context without aborting the run. When null, behavior is unchanged.
-typedef PostToolCallHook =
-    Future<PostToolCallResult> Function(
-      StatefulAgent agent,
-      AgentState state,
-      FunctionExecutionResult result,
-    );
-
 class StatefulAgent {
   final Logger _logger = Logger('StatefulAgent');
 
@@ -449,6 +452,10 @@ class StatefulAgent {
   /// Controller for intercepting agent events.
   final AgentController? controller;
 
+  /// Ordered control pipeline for run/model/tool/persistence lifecycle phases.
+  final List<AgentHook> hooks;
+  late final AgentHookPipeline _hookPipeline;
+
   /// Whether this agent is running as a sub-agent.
   final bool isSubAgent;
 
@@ -458,26 +465,8 @@ class StatefulAgent {
   /// Optional callback for persisting state on changes.
   final Function(AgentState state)? autoSaveStateFunc;
 
-  /// Optional callback to dynamically modify LLM requests before they are sent.
-  final SystemCallback? systemCallback;
-
-  /// Optional hook fired when the model completes a turn with no tool calls.
-  /// Can accept the completion (break) or continue with a follow-up message.
-  /// When null, the loop breaks exactly as before.
-  final TurnCompletionHook? turnCompletionHook;
-
-  /// Maximum number of [turnCompletionHook]-driven continuations allowed in a
-  /// single run, on top of the existing turn/loop cap. Prevents a misbehaving
-  /// hook from looping forever. Defaults to 3.
+  /// Maximum number of hook-driven final-turn continuations allowed in a run.
   final int maxTurnContinuations;
-
-  /// Optional hook fired before each tool executes. Can allow, rewrite
-  /// arguments, or deny with a synthetic result. When null, unchanged.
-  final PreToolCallHook? preToolCallHook;
-
-  /// Optional hook fired after each tool executes. Can inject a follow-up
-  /// reminder message before the next LLM call. When null, unchanged.
-  final PostToolCallHook? postToolCallHook;
   List<DirectorySkillMetadata> _directorySkills = [];
   late final JavaScriptBridgeRegistry _jsBridgeRegistry;
 
@@ -502,14 +491,11 @@ class StatefulAgent {
     this.withGeneralPrinciples = true,
     this.autoSaveStateFunc,
     this.controller,
+    List<AgentHook>? hooks,
     LoopDetector? loopDetector,
     this.isSubAgent = false,
     this.disableSubAgents = false,
-    this.systemCallback,
-    this.turnCompletionHook,
     this.maxTurnContinuations = 3,
-    this.preToolCallHook,
-    this.postToolCallHook,
     this.maxTurns = 20,
   }) : assert(
          skills == null ||
@@ -518,9 +504,11 @@ class StatefulAgent {
              skillDirectoryPath == '',
          'skills and skillDirectoryPath cannot be enabled at the same time',
        ),
+       hooks = hooks ?? const [],
        systemPrompts = systemPrompts ?? [] {
     _planner = Planner(this, controller);
     _jsBridgeRegistry = javaScriptBridgeRegistry ?? JavaScriptBridgeRegistry();
+    _hookPipeline = AgentHookPipeline(this.hooks);
     this.loopDetector =
         loopDetector ??
         DefaultLoopDetector(
@@ -797,52 +785,44 @@ class StatefulAgent {
     }
   }
 
-  Future<List<LLMMessage>> resume({bool useStream = true}) async {
+  Future<List<LLMMessage>> resume({
+    CancelToken? cancelToken,
+    bool useStream = true,
+    int? maxTurns,
+  }) async {
     if (!state.isRunning) {
       throw AgentException(
         AgentExceptionCode.resumeFailed,
         'Agent is not running',
       );
     }
-    if (controller != null) {
-      final response = await controller!.request(
-        ResumeAgentRequest(this),
-        ResumeAgentResponse(stop: false),
-      );
-      if (response.stop) {
-        throw AgentException(
-          AgentExceptionCode.stopByController,
-          'Agent stopped by controller',
-          error: response.err,
-        );
-      }
-      controller!.publish(AgentResumedEvent(this));
-    }
-    return run([], useStream: useStream);
+    controller?.publish(AgentResumedEvent(this));
+    return run(
+      [],
+      cancelToken: cancelToken,
+      useStream: useStream,
+      maxTurns: maxTurns,
+    );
   }
 
-  Stream<StreamingEvent> resumeStream({bool useStream = true}) async* {
+  Stream<StreamingEvent> resumeStream({
+    CancelToken? cancelToken,
+    bool useStream = true,
+    int? maxTurns,
+  }) async* {
     if (!state.isRunning) {
       throw AgentException(
         AgentExceptionCode.resumeFailed,
         'Agent is not running',
       );
     }
-    if (controller != null) {
-      final response = await controller!.request(
-        ResumeAgentRequest(this),
-        ResumeAgentResponse(stop: false),
-      );
-      if (response.stop) {
-        throw AgentException(
-          AgentExceptionCode.stopByController,
-          'Agent stopped by controller',
-          error: response.err,
-        );
-      }
-      controller!.publish(AgentResumedEvent(this));
-    }
-    yield* runStream([], useStream: useStream);
+    controller?.publish(AgentResumedEvent(this));
+    yield* runStream(
+      [],
+      cancelToken: cancelToken,
+      useStream: useStream,
+      maxTurns: maxTurns,
+    );
   }
 
   Future<List<LLMMessage>> run(
@@ -874,38 +854,29 @@ class StatefulAgent {
     int? maxTurns,
   }) async* {
     AgentException? error;
-    List<ModelMessage> modelMessages = [];
+    final modelMessages = <ModelMessage>[];
+    var effectiveInput = List<LLMMessage>.from(messages);
     final currentMaxTurns = maxTurns ?? this.maxTurns;
     int currentRetryCount = 0;
     const int maxRetryCount = 3;
     int turnContinuationCount = 0;
+    var stopReason = 'unknown';
     try {
-      if (controller != null) {
-        final response = await controller!.request(
-          BeforeRunAgentRequest(this, messages),
-          BeforeRunAgentResponse(stop: false),
-        );
-        if (response.stop) {
-          throw AgentException(
-            AgentExceptionCode.stopByController,
-            'Agent stopped by controller',
-            error: response.err,
-          );
-        }
-        controller!.publish(AgentStartedEvent(this, messages));
-      }
+      effectiveInput = await _prepareRunPhase(
+        effectiveInput,
+        useStream: useStream,
+        cancelToken: cancelToken,
+      );
+      controller?.publish(AgentStartedEvent(this, effectiveInput));
 
-      if (messages.isNotEmpty) {
-        state.history.messages.addAll(messages);
+      if (effectiveInput.isNotEmpty) {
+        state.history.messages.addAll(effectiveInput);
       }
-      await _prepareDirectorySkills(messages);
+      await _prepareDirectorySkills(effectiveInput);
       state.currentLoopCount = 0;
       state.currentLoopUsages.clear();
-      // To prevent infinite loops in streams or complex state, we might limit turns?
-      // For now, simple loop.
       int? lastSystemPromptHash;
       int? lastToolsHash;
-      String stopReason;
 
       state.isRunning = true;
       state.lastError = null;
@@ -921,107 +892,20 @@ class StatefulAgent {
           await compressor!.compress(state);
         }
 
-        // 3. Build request messages
-        var systemMessage = composeSystemMessage();
-        var requestMessages = List<LLMMessage>.from(state.history.messages);
-
-        _injectSystemReminder(requestMessages);
-
-        // 4. copy tools
-        List<Tool> toolsCopy = composeTools();
-
-        // System callback interception point
-        if (systemCallback != null) {
-          try {
-            final result = await systemCallback!(
-              this,
-              systemMessage,
-              toolsCopy,
-              requestMessages,
-            );
-            systemMessage = result.systemMessage;
-            toolsCopy = result.tools;
-            requestMessages = result.requestMessages;
-          } catch (e) {
-            _logger.warning(
-              '[$name] system_callback execution error: $e. Using original values.',
-            );
-          }
-        }
-
-        // Insert system_message at the front of request_messages
-        if (systemMessage != null) {
-          requestMessages.insert(0, systemMessage);
-        }
-
-        // Check for changes in System Prompt and Tools
-        // Use hashCode for lighter weight change detection compared to MD5
-        final currentSystemPromptHash = systemMessage?.content.hashCode ?? 0;
-
-        final toolNames = toolsCopy.map((t) => t.name).toList()..sort();
-        final currentToolsHash = toolNames.join(',').hashCode;
-
-        // Log specific changes
-        // We check for null to avoid logging on the very first iteration if that is preferred,
-        // generally "changed" implies comparison with a previous state.
-        // However, if we want to track initialization, the very first turn last*Hash is null.
-        // The user prompt "if next time... changes", implies we compare with previous.
-        // System Prompt History
-        if (lastSystemPromptHash == null ||
-            currentSystemPromptHash != lastSystemPromptHash) {
-          if (lastSystemPromptHash != null) {
-            _logger.info(
-              '[$name] 🔄 System Prompt changed! Hash: $lastSystemPromptHash -> $currentSystemPromptHash',
-            );
-          }
-          state.systemPromptHistory.add(
-            SystemPromptHistoryItem(
-              content: systemMessage?.content ?? '',
-              validFromMessageIndex: state.history.messages.length,
-            ),
-          );
-        }
-
-        // Tools History
-        if (lastToolsHash == null || currentToolsHash != lastToolsHash) {
-          if (lastToolsHash != null) {
-            _logger.info(
-              '[$name] 🔄 Tools attributes changed! Hash: $lastToolsHash -> $currentToolsHash',
-            );
-          }
-          state.toolsHistory.add(
-            ToolsHistoryItem(
-              tools: toolsCopy.map((t) => t.toJson()).toList(),
-              validFromMessageIndex: state.history.messages.length,
-            ),
-          );
-        }
-
-        lastSystemPromptHash = currentSystemPromptHash;
-        lastToolsHash = currentToolsHash;
-
-        final params = CallLLMParams(
-          messages: requestMessages,
-          tools: toolsCopy,
-          toolChoice: toolChoice,
-          modelConfig: modelConfig,
-          stream: useStream,
+        final modelCall = await _prepareModelCallPhase(
+          useStream: useStream,
+          lastSystemPromptHash: lastSystemPromptHash,
+          lastToolsHash: lastToolsHash,
+          cancelToken: cancelToken,
         );
+        lastSystemPromptHash = modelCall.systemPromptHash;
+        lastToolsHash = modelCall.toolsHash;
 
-        if (controller != null) {
-          final response = await controller!.request(
-            BeforeCallLLMRequest(this, params),
-            BeforeCallLLMResponse(approve: true),
-          );
-          if (!response.approve) {
-            throw AgentException(
-              AgentExceptionCode.stopByController,
-              'Agent stopped by controller',
-              error: response.err,
-            );
-          }
-          controller!.publish(BeforeCallLLMEvent(this, params));
-        }
+        final modelCallRequest = modelCall.request;
+        final params = modelCall.params;
+        final syntheticModelResponse = modelCall.syntheticResponse;
+
+        controller?.publish(BeforeCallLLMEvent(this, params));
 
         yield StreamingEvent(
           eventType: StreamingEventType.beforeCallModel,
@@ -1038,20 +922,23 @@ class StatefulAgent {
         state.currentLoopCount++;
         state.totalLoopCount++;
 
-        final StringBuffer aggregatedText = StringBuffer();
-        final StringBuffer aggregatedThought = StringBuffer();
-        final List<Map<String, dynamic>> aggregatedContentBlocks = [];
-        final List<FunctionCall> aggregatedTools = [];
-        final List<ModelImagePart> imageOutputs = [];
-        final List<ModelVideoPart> videoOutputs = [];
-        final List<ModelAudioPart> audioOutputs = [];
-        String? finalStopReason;
-        ModelUsage? finalUsage;
-        String? thoughtSignature;
-        String? finalResponseId;
-        Map<String, dynamic>? finalMetadata;
+        final aggregation = _ModelMessageAccumulator();
 
-        if (useStream) {
+        if (syntheticModelResponse != null) {
+          final chunk = await _applyModelChunkPhase(
+            params,
+            syntheticModelResponse,
+            detectLoop: false,
+          );
+          if (chunk != null) {
+            aggregation.add(chunk);
+            controller?.publish(LLMChunkEvent(this, params, chunk));
+            yield StreamingEvent(
+              eventType: StreamingEventType.modelChunkMessage,
+              data: chunk,
+            );
+          }
+        } else if (params.stream) {
           final stream = await client.stream(
             params.messages,
             tools: params.tools,
@@ -1062,51 +949,15 @@ class StatefulAgent {
 
           await for (final streamingMessage in stream) {
             if (streamingMessage.modelMessage != null) {
-              final chunk = streamingMessage.modelMessage!;
-              _logModelMessage(chunk, true);
-              final loopDetectResult = await loopDetector.detect(chunk);
-              if (loopDetectResult.isLoop) {
-                throw AgentException(
-                  AgentExceptionCode.loopDetection,
-                  'Loop detected, ${loopDetectResult.message}',
-                );
+              final chunk = await _applyModelChunkPhase(
+                params,
+                streamingMessage.modelMessage!,
+                detectLoop: true,
+              );
+              if (chunk == null) {
+                continue;
               }
-              if (chunk.textOutput != null) {
-                aggregatedText.write(chunk.textOutput);
-              }
-              if (chunk.functionCalls.isNotEmpty) {
-                aggregatedTools.addAll(chunk.functionCalls);
-              }
-              if (chunk.contentBlocks.isNotEmpty) {
-                aggregatedContentBlocks.addAll(chunk.contentBlocks);
-              }
-              if (chunk.imageOutputs.isNotEmpty) {
-                imageOutputs.addAll(chunk.imageOutputs);
-              }
-              if (chunk.videoOutputs.isNotEmpty) {
-                videoOutputs.addAll(chunk.videoOutputs);
-              }
-              if (chunk.audioOutputs.isNotEmpty) {
-                audioOutputs.addAll(chunk.audioOutputs);
-              }
-              if (chunk.stopReason != null) {
-                finalStopReason = chunk.stopReason;
-              }
-              if (chunk.usage != null) {
-                finalUsage = chunk.usage;
-              }
-              if (chunk.metadata != null) {
-                finalMetadata = chunk.metadata;
-              }
-              if (chunk.thought != null) {
-                aggregatedThought.write(chunk.thought!);
-              }
-              if (chunk.thoughtSignature != null) {
-                thoughtSignature = chunk.thoughtSignature;
-              }
-              if (chunk.responseId != null) {
-                finalResponseId = chunk.responseId;
-              }
+              aggregation.add(chunk);
 
               controller?.publish(LLMChunkEvent(this, params, chunk));
 
@@ -1125,73 +976,30 @@ class StatefulAgent {
                   eventType: StreamingEventType.modelRetrying,
                   data: controlMessage.data,
                 );
-                aggregatedText.clear();
-                aggregatedTools.clear();
-                imageOutputs.clear();
-                videoOutputs.clear();
-                audioOutputs.clear();
-                finalStopReason = null;
-                finalUsage = null;
-                finalMetadata = null;
-                aggregatedThought.clear();
-                aggregatedContentBlocks.clear();
-                thoughtSignature = null;
+                aggregation.reset();
                 controller?.publish(LLMRetryingEvent(this, retryReason));
               }
             }
           }
         } else {
-          final fullMessage = await client.generate(
+          var fullMessage = await client.generate(
             params.messages,
             tools: params.tools,
             toolChoice: params.toolChoice,
             modelConfig: params.modelConfig,
             cancelToken: cancelToken,
           );
-          _logModelMessage(fullMessage, true);
-          final loopDetectResult = await loopDetector.detect(fullMessage);
-          if (loopDetectResult.isLoop) {
-            throw AgentException(
-              AgentExceptionCode.loopDetection,
-              'Loop detected, ${loopDetectResult.message}',
-            );
+          final chunk = await _applyModelChunkPhase(
+            params,
+            fullMessage,
+            detectLoop: true,
+          );
+          if (chunk == null) {
+            fullMessage = ModelMessage(model: modelConfig.model);
+          } else {
+            fullMessage = chunk;
           }
-          if (fullMessage.textOutput != null) {
-            aggregatedText.write(fullMessage.textOutput);
-          }
-          if (fullMessage.functionCalls.isNotEmpty) {
-            aggregatedTools.addAll(fullMessage.functionCalls);
-          }
-          if (fullMessage.contentBlocks.isNotEmpty) {
-            aggregatedContentBlocks.addAll(fullMessage.contentBlocks);
-          }
-          if (fullMessage.imageOutputs.isNotEmpty) {
-            imageOutputs.addAll(fullMessage.imageOutputs);
-          }
-          if (fullMessage.videoOutputs.isNotEmpty) {
-            videoOutputs.addAll(fullMessage.videoOutputs);
-          }
-          if (fullMessage.audioOutputs.isNotEmpty) {
-            audioOutputs.addAll(fullMessage.audioOutputs);
-          }
-          if (fullMessage.stopReason != null) {
-            finalStopReason = fullMessage.stopReason;
-          }
-          if (fullMessage.usage != null) {
-            finalUsage = fullMessage.usage;
-          }
-          if (fullMessage.metadata != null) {
-            finalMetadata = fullMessage.metadata;
-          }
-          if (fullMessage.thought != null) {
-            aggregatedThought.write(fullMessage.thought);
-          }
-          if (fullMessage.thoughtSignature != null) {
-            thoughtSignature = fullMessage.thoughtSignature;
-          }
-          if (fullMessage.responseId != null) {
-            finalResponseId = fullMessage.responseId;
-          }
+          aggregation.add(fullMessage);
 
           controller?.publish(LLMChunkEvent(this, params, fullMessage));
 
@@ -1201,7 +1009,7 @@ class StatefulAgent {
           );
         }
 
-        if (finalStopReason == null) {
+        if (aggregation.stopReason == null) {
           _logger.warning(
             '[$name] ⚠️ Model returned empty stop reason, retry again',
           );
@@ -1222,9 +1030,7 @@ class StatefulAgent {
           continue;
         }
 
-        if (aggregatedTools.isEmpty &&
-            aggregatedText.isEmpty &&
-            finalResponseId == null) {
+        if (aggregation.isEmptyResponse) {
           _logger.warning(
             '[$name] ⚠️ Model returned empty response, retry again',
           );
@@ -1245,29 +1051,27 @@ class StatefulAgent {
           continue;
         }
 
-        currentRetryCount =
-            0; // Reset retry count after getting a non-empty response
+        var fullMessage = aggregation.toModelMessage(modelConfig.model);
 
-        // Reconstruct full message for history
-        final fullMessage = ModelMessage(
-          textOutput: aggregatedText.isNotEmpty
-              ? aggregatedText.toString()
-              : null,
-          functionCalls: aggregatedTools,
-          contentBlocks: aggregatedContentBlocks,
-          imageOutputs: imageOutputs,
-          videoOutputs: videoOutputs,
-          audioOutputs: audioOutputs,
-          stopReason: finalStopReason,
-          usage: finalUsage,
-          metadata: finalMetadata,
-          model: modelConfig.model,
-          thought: aggregatedThought.isNotEmpty
-              ? aggregatedThought.toString()
-              : null,
-          thoughtSignature: thoughtSignature,
-          responseId: finalResponseId,
-        );
+        final afterModel = await _applyAfterModelCallPhase(params, fullMessage);
+        if (afterModel.shouldRetry) {
+          currentRetryCount++;
+          if (currentRetryCount >= maxRetryCount) {
+            throw AgentException(
+              AgentExceptionCode.loopDetection,
+              'Maximum consecutive hook retries reached ($maxRetryCount).',
+            );
+          }
+          final retryReason = afterModel.retryReason!;
+          yield StreamingEvent(
+            eventType: StreamingEventType.modelRetrying,
+            data: {'retryReason': retryReason},
+          );
+          controller?.publish(LLMRetryingEvent(this, retryReason));
+          continue;
+        }
+        fullMessage = afterModel.response!;
+        currentRetryCount = 0;
 
         _logModelMessage(fullMessage, false);
         stopReason = fullMessage.stopReason ?? "unknown";
@@ -1287,41 +1091,18 @@ class StatefulAgent {
           state.currentLoopUsages.add(fullMessage.usage!);
         }
 
-        if (aggregatedTools.isEmpty) {
+        final toolCalls = fullMessage.functionCalls;
+        if (toolCalls.isEmpty) {
           state.history.messages.add(fullMessage);
 
-          // Turn-completion hook: the model wants to stop, but the harness may
-          // decide to continue with a follow-up message. Bounded by
-          // maxTurnContinuations (and the existing turn/loop cap) so a
-          // misbehaving hook cannot loop forever.
-          if (turnCompletionHook != null &&
-              turnContinuationCount < maxTurnContinuations) {
-            TurnCompletionResult? completion;
-            try {
-              completion = await turnCompletionHook!(this, state, fullMessage);
-            } catch (e) {
-              _logger.warning(
-                '[$name] turn_completion_hook execution error: $e. Accepting completion.',
-              );
-              completion = null;
-            }
-            if (completion != null &&
-                completion.decision == TurnCompletionDecision.continueRun &&
-                completion.followUpMessage != null) {
-              turnContinuationCount++;
-              state.history.messages.add(completion.followUpMessage!);
-              _logger.info(
-                '[$name] ▶️ Turn-completion hook requested continuation '
-                '($turnContinuationCount/$maxTurnContinuations)',
-              );
-              continue;
-            }
-          } else if (turnCompletionHook != null &&
-              turnContinuationCount >= maxTurnContinuations) {
-            _logger.warning(
-              '[$name] turn_completion_hook continuation budget exhausted '
-              '($maxTurnContinuations); accepting completion.',
-            );
+          final completion = await _applyTurnCompletionPhase(
+            fullMessage,
+            continuationCount: turnContinuationCount,
+          );
+          if (completion.shouldContinue) {
+            turnContinuationCount++;
+            state.history.messages.addAll(completion.messages);
+            continue;
           }
 
           break;
@@ -1329,172 +1110,28 @@ class StatefulAgent {
 
         yield StreamingEvent(
           eventType: StreamingEventType.functionCallRequest,
-          data: aggregatedTools,
+          data: toolCalls,
         );
 
-        _logger.info(
-          '[$name] 🔧 Executing tools\n:  ${aggregatedTools.map((e) => '${e.name}: ${e.arguments}').join("\n  ")}',
-        );
-
-        if (controller != null) {
-          for (final toolCall in aggregatedTools) {
-            final response = await controller!.request(
-              BeforeToolCallRequest(this, toolCall),
-              BeforeToolCallResponse(approve: true),
-            );
-            if (!response.approve) {
-              throw AgentException(
-                AgentExceptionCode.stopByController,
-                'Agent stopped by controller',
-                error: response.err,
-              );
-            }
-            controller!.publish(BeforeToolCallEvent(this, toolCall));
-          }
-        }
-
-        // Pre-tool-call hook: allow as-is, rewrite arguments, or deny with a
-        // synthetic result. Denied calls are NOT executed but still produce a
-        // tool result, preserving the every-call-gets-a-result invariant.
-        final List<FunctionCall> callsToExecute;
-        final Map<String, ExecutionToolResult> syntheticResults = {};
-        if (preToolCallHook != null) {
-          final filtered = <FunctionCall>[];
-          for (final toolCall in aggregatedTools) {
-            PreToolCallResult? hookResult;
-            try {
-              hookResult = await preToolCallHook!(this, state, toolCall);
-            } catch (e) {
-              _logger.warning(
-                '[$name] pre_tool_call_hook execution error for '
-                '${toolCall.name}: $e. Proceeding with original call.',
-              );
-              hookResult = null;
-            }
-            if (hookResult != null &&
-                hookResult.action == PreToolCallAction.deny) {
-              _logger.info(
-                '[$name] 🚫 Tool call denied by hook: ${toolCall.name}',
-              );
-              syntheticResults[toolCall.id] = ExecutionToolResult(
-                id: toolCall.id,
-                name: toolCall.name,
-                arguments: toolCall.arguments,
-                content:
-                    hookResult.denyResultContent ??
-                    [TextPart('Tool call ${toolCall.name} denied by hook.')],
-                isError: hookResult.denyIsError,
-              );
-              continue;
-            }
-            if (hookResult != null &&
-                hookResult.action == PreToolCallAction.proceed &&
-                hookResult.rewrittenArguments != null) {
-              filtered.add(
-                FunctionCall(
-                  id: toolCall.id,
-                  name: toolCall.name,
-                  arguments: hookResult.rewrittenArguments!,
-                ),
-              );
-            } else {
-              filtered.add(toolCall);
-            }
-          }
-          callsToExecute = filtered;
-        } else {
-          callsToExecute = aggregatedTools;
-        }
-
-        final executedResults = callsToExecute.isEmpty
-            ? <ExecutionToolResult>[]
-            : await _executeTools(
-                callsToExecute,
-                toolsCopy,
-                state,
-                cancelToken: cancelToken,
-              );
-        // Merge executed + synthetic results, preserving the original call order.
-        final executedById = {for (final r in executedResults) r.id: r};
-        final toolExecutionResults = aggregatedTools
-            .map((c) => executedById[c.id] ?? syntheticResults[c.id]!)
-            .toList();
-        final List<FunctionExecutionResult> functionExecutionResults =
-            toolExecutionResults
-                .map(
-                  (result) => FunctionExecutionResult(
-                    id: result.id,
-                    name: result.name,
-                    isError: result.isError,
-                    arguments: result.arguments,
-                    content: result.content,
-                    metadata: result.metadata,
-                  ),
-                )
-                .toList();
-        final toolExecutionMessage = FunctionExecutionResultMessage(
-          results: functionExecutionResults,
-        );
-
-        if (controller != null) {
-          for (final toolResult in functionExecutionResults) {
-            final response = await controller!.request(
-              AfterToolCallRequest(this, toolResult),
-              AfterToolCallResponse(stop: false),
-            );
-            if (response.stop) {
-              throw AgentException(
-                AgentExceptionCode.stopByController,
-                'Agent stopped by controller',
-                error: response.err,
-              );
-            }
-            controller!.publish(AfterToolCallEvent(this, toolResult));
-          }
-        }
-
-        _logger.info(
-          '[$name] 🔧 Executed tools\n: ${functionExecutionResults.map((e) => '${e.name}: Success:${e.isError ? '❌ No' : '✅ Yes'}').join("\n  ")}',
+        final toolPhase = await _executeToolCallPhase(
+          toolCalls,
+          modelMessage: fullMessage,
+          availableTools: modelCallRequest.tools,
+          cancelToken: cancelToken,
         );
 
         yield StreamingEvent(
           eventType: StreamingEventType.functionCallResult,
-          data: toolExecutionMessage,
+          data: toolPhase.message,
         );
 
-        state.history.messages.addAll([fullMessage, toolExecutionMessage]);
-
-        // Post-tool-call hook: external state updates and optional follow-up
-        // reminder messages injected before the next LLM call. When null,
-        // history is unchanged from the default path.
-        if (postToolCallHook != null) {
-          for (final toolResult in functionExecutionResults) {
-            PostToolCallResult? hookResult;
-            try {
-              hookResult = await postToolCallHook!(this, state, toolResult);
-            } catch (e) {
-              _logger.warning(
-                '[$name] post_tool_call_hook execution error for '
-                '${toolResult.name}: $e. Skipping reminder.',
-              );
-              hookResult = null;
-            }
-            if (hookResult?.reminderMessage != null) {
-              state.history.messages.add(hookResult!.reminderMessage!);
-              _logger.info(
-                '[$name] 💬 Post-tool-call hook injected reminder after ${toolResult.name}',
-              );
-            }
-          }
+        state.history.messages.addAll([fullMessage, toolPhase.message]);
+        if (toolPhase.injectedMessages.isNotEmpty) {
+          state.history.messages.addAll(toolPhase.injectedMessages);
         }
+        await _persistState('afterToolCall');
 
-        if (autoSaveStateFunc != null) {
-          await autoSaveStateFunc!(state);
-        }
-
-        // Check if any tool returned an stop flag
-        final stopFlag = toolExecutionResults.any((result) => result.stopFlag);
-        if (stopFlag) {
+        if (toolPhase.shouldStop) {
           _logger.info('[$name] 🤖 Stop flag hit, breaking loop');
           break;
         }
@@ -1515,7 +1152,7 @@ class StatefulAgent {
       state.isRunning = false;
 
       controller?.publish(
-        AgentRunSuccessedEvent(this, messages, modelMessages, stopReason),
+        AgentRunSuccessedEvent(this, effectiveInput, modelMessages, stopReason),
       );
     } on AgentException catch (e) {
       error = e;
@@ -1565,13 +1202,400 @@ class StatefulAgent {
       );
       throw error;
     } finally {
-      if (autoSaveStateFunc != null) {
-        await autoSaveStateFunc!(state);
-      }
+      await _hookPipeline.afterRun(
+        AfterRunHookContext(
+          this,
+          input: effectiveInput,
+          modelMessages: modelMessages,
+          error: error,
+        ),
+      );
+      await _persistState('finally', runError: error);
       controller?.publish(
-        AgentStoppedEvent(this, messages, modelMessages, error: error),
+        AgentStoppedEvent(this, effectiveInput, modelMessages, error: error),
       );
     }
+  }
+
+  Future<void> _persistState(String reason, {AgentException? runError}) async {
+    final context = StatePersistenceHookContext(
+      this,
+      reason: reason,
+      runError: runError,
+    );
+    final decision = await _hookPipeline.beforePersistState(context);
+    switch (decision.action) {
+      case StatePersistenceHookAction.abort:
+        throw _hookAbortException(
+          'beforePersistState',
+          decision.error,
+          decision.reason,
+        );
+      case StatePersistenceHookAction.skip:
+        return;
+      case StatePersistenceHookAction.proceed:
+        if (autoSaveStateFunc != null) {
+          await autoSaveStateFunc!(state);
+        }
+        await _hookPipeline.afterPersistState(context);
+    }
+  }
+
+  Future<List<LLMMessage>> _prepareRunPhase(
+    List<LLMMessage> input, {
+    required bool useStream,
+    required CancelToken? cancelToken,
+  }) async {
+    final beforeRun = await _hookPipeline.beforeRun(
+      BeforeRunHookContext(
+        this,
+        input: input,
+        stream: useStream,
+        cancelToken: cancelToken,
+      ),
+    );
+    if (beforeRun.action == BeforeRunHookAction.abort) {
+      throw _hookAbortException('beforeRun', beforeRun.error, beforeRun.reason);
+    }
+    return List<LLMMessage>.from(beforeRun.input ?? input);
+  }
+
+  Future<_PreparedModelCallPhase> _prepareModelCallPhase({
+    required bool useStream,
+    required int? lastSystemPromptHash,
+    required int? lastToolsHash,
+    required CancelToken? cancelToken,
+  }) async {
+    final requestMessages = List<LLMMessage>.from(state.history.messages);
+    _injectSystemReminder(requestMessages);
+
+    var modelCallRequest = ModelCallRequest(
+      systemMessage: composeSystemMessage(),
+      requestMessages: requestMessages,
+      tools: composeTools(),
+      toolChoice: toolChoice,
+      modelConfig: modelConfig,
+      stream: useStream,
+    );
+
+    final beforeModel = await _hookPipeline.beforeModelCall(
+      ModelCallHookContext(
+        this,
+        request: modelCallRequest,
+        turnIndex: state.currentLoopCount,
+        cancelToken: cancelToken,
+      ),
+    );
+    if (beforeModel.action == ModelCallHookAction.abort) {
+      throw _hookAbortException(
+        'beforeModelCall',
+        beforeModel.error,
+        beforeModel.reason,
+      );
+    }
+
+    modelCallRequest = beforeModel.request ?? modelCallRequest;
+
+    final hashes = _recordModelContextHistory(
+      modelCallRequest,
+      lastSystemPromptHash: lastSystemPromptHash,
+      lastToolsHash: lastToolsHash,
+    );
+
+    return _PreparedModelCallPhase(
+      request: modelCallRequest,
+      params: modelCallRequest.toCallLLMParams(),
+      syntheticResponse: beforeModel.action == ModelCallHookAction.respond
+          ? beforeModel.response
+          : null,
+      systemPromptHash: hashes.systemPromptHash,
+      toolsHash: hashes.toolsHash,
+    );
+  }
+
+  _PromptToolHistoryHashes _recordModelContextHistory(
+    ModelCallRequest request, {
+    required int? lastSystemPromptHash,
+    required int? lastToolsHash,
+  }) {
+    final currentSystemPromptHash =
+        request.systemMessage?.content.hashCode ?? 0;
+    final toolNames = request.tools.map((t) => t.name).toList()..sort();
+    final currentToolsHash = toolNames.join(',').hashCode;
+
+    if (lastSystemPromptHash == null ||
+        currentSystemPromptHash != lastSystemPromptHash) {
+      if (lastSystemPromptHash != null) {
+        _logger.info(
+          '[$name] 🔄 System Prompt changed! Hash: $lastSystemPromptHash -> $currentSystemPromptHash',
+        );
+      }
+      state.systemPromptHistory.add(
+        SystemPromptHistoryItem(
+          content: request.systemMessage?.content ?? '',
+          validFromMessageIndex: state.history.messages.length,
+        ),
+      );
+    }
+
+    if (lastToolsHash == null || currentToolsHash != lastToolsHash) {
+      if (lastToolsHash != null) {
+        _logger.info(
+          '[$name] 🔄 Tools attributes changed! Hash: $lastToolsHash -> $currentToolsHash',
+        );
+      }
+      state.toolsHistory.add(
+        ToolsHistoryItem(
+          tools: request.tools.map((t) => t.toJson()).toList(),
+          validFromMessageIndex: state.history.messages.length,
+        ),
+      );
+    }
+
+    return _PromptToolHistoryHashes(
+      systemPromptHash: currentSystemPromptHash,
+      toolsHash: currentToolsHash,
+    );
+  }
+
+  Future<ModelMessage?> _applyModelChunkPhase(
+    CallLLMParams params,
+    ModelMessage chunk, {
+    required bool detectLoop,
+  }) async {
+    final chunkResult = await _hookPipeline.onModelChunk(
+      ModelChunkHookContext(this, params: params, chunk: chunk),
+    );
+    if (chunkResult.action == ModelChunkHookAction.abort) {
+      throw _hookAbortException(
+        'onModelChunk',
+        chunkResult.error,
+        chunkResult.reason,
+      );
+    }
+    if (chunkResult.action == ModelChunkHookAction.drop) {
+      return null;
+    }
+
+    final nextChunk = chunkResult.chunk ?? chunk;
+    _logModelMessage(nextChunk, true);
+    if (detectLoop) {
+      final loopDetectResult = await loopDetector.detect(nextChunk);
+      if (loopDetectResult.isLoop) {
+        throw AgentException(
+          AgentExceptionCode.loopDetection,
+          'Loop detected, ${loopDetectResult.message}',
+        );
+      }
+    }
+    return nextChunk;
+  }
+
+  Future<_AfterModelCallPhase> _applyAfterModelCallPhase(
+    CallLLMParams params,
+    ModelMessage response,
+  ) async {
+    final afterModel = await _hookPipeline.afterModelCall(
+      ModelResponseHookContext(this, params: params, response: response),
+    );
+    switch (afterModel.action) {
+      case ModelResponseHookAction.abort:
+        throw _hookAbortException(
+          'afterModelCall',
+          afterModel.error,
+          afterModel.reason,
+        );
+      case ModelResponseHookAction.retry:
+        return _AfterModelCallPhase.retry(
+          afterModel.retryReason ?? 'Hook requested retry',
+        );
+      case ModelResponseHookAction.proceed:
+        return _AfterModelCallPhase.proceed(afterModel.response ?? response);
+    }
+  }
+
+  Future<_TurnCompletionPhase> _applyTurnCompletionPhase(
+    ModelMessage finalMessage, {
+    required int continuationCount,
+  }) async {
+    if (continuationCount >= maxTurnContinuations) {
+      if (!_hookPipeline.isEmpty) {
+        _logger.warning(
+          '[$name] turn-completion continuation budget exhausted '
+          '($maxTurnContinuations); accepting completion.',
+        );
+      }
+      return const _TurnCompletionPhase.accept();
+    }
+
+    final completion = await _hookPipeline.onTurnCompletion(
+      TurnCompletionHookContext(
+        this,
+        finalMessage: finalMessage,
+        continuationCount: continuationCount,
+        maxContinuations: maxTurnContinuations,
+      ),
+    );
+    if (completion.action == TurnCompletionHookAction.abort) {
+      throw _hookAbortException(
+        'onTurnCompletion',
+        completion.error,
+        completion.reason,
+      );
+    }
+    if (completion.action == TurnCompletionHookAction.continueRun &&
+        completion.messages.isNotEmpty) {
+      return _TurnCompletionPhase.continueWith(completion.messages);
+    }
+    return const _TurnCompletionPhase.accept();
+  }
+
+  Future<_ToolCallPhase> _executeToolCallPhase(
+    List<FunctionCall> toolCalls, {
+    required ModelMessage modelMessage,
+    required List<Tool> availableTools,
+    required CancelToken? cancelToken,
+  }) async {
+    _logger.info(
+      '[$name] 🔧 Executing tools\n:  ${toolCalls.map((e) => '${e.name}: ${e.arguments}').join("\n  ")}',
+    );
+
+    final callsToExecute = <FunctionCall>[];
+    final syntheticResults = <String, ExecutionToolResult>{};
+    for (final toolCall in toolCalls) {
+      controller?.publish(BeforeToolCallEvent(this, toolCall));
+      final beforeTool = await _hookPipeline.beforeToolCall(
+        ToolCallHookContext(
+          this,
+          call: toolCall,
+          modelMessage: modelMessage,
+          availableTools: availableTools,
+        ),
+      );
+      switch (beforeTool.action) {
+        case ToolCallHookAction.abort:
+          throw _hookAbortException(
+            'beforeToolCall',
+            beforeTool.error,
+            beforeTool.reason,
+          );
+        case ToolCallHookAction.deny:
+        case ToolCallHookAction.defer:
+          syntheticResults[toolCall.id] = _syntheticToolResult(
+            toolCall,
+            beforeTool,
+          );
+        case ToolCallHookAction.proceed:
+          callsToExecute.add(beforeTool.call ?? toolCall);
+      }
+    }
+
+    final executedResults = callsToExecute.isEmpty
+        ? <ExecutionToolResult>[]
+        : await _executeTools(
+            callsToExecute,
+            availableTools,
+            state,
+            cancelToken: cancelToken,
+          );
+    final executedById = {for (final r in executedResults) r.id: r};
+    final toolExecutionResults = toolCalls
+        .map((c) => executedById[c.id] ?? syntheticResults[c.id]!)
+        .toList();
+    final functionExecutionResults = toolExecutionResults.map((result) {
+      return FunctionExecutionResult(
+        id: result.id,
+        name: result.name,
+        isError: result.isError,
+        arguments: result.arguments,
+        content: result.content,
+        metadata: result.metadata,
+      );
+    }).toList();
+
+    final finalFunctionExecutionResults = <FunctionExecutionResult>[];
+    final injectedMessages = <LLMMessage>[];
+    var stopByHook = false;
+    for (final toolResult in functionExecutionResults) {
+      final afterTool = await _hookPipeline.afterToolCall(
+        ToolResultHookContext(
+          this,
+          result: toolResult,
+          modelMessage: modelMessage,
+        ),
+      );
+      if (afterTool.action == ToolResultHookAction.abort) {
+        throw _hookAbortException(
+          'afterToolCall',
+          afterTool.error,
+          afterTool.reason,
+        );
+      }
+      final finalToolResult = afterTool.result ?? toolResult;
+      finalFunctionExecutionResults.add(finalToolResult);
+      injectedMessages.addAll(afterTool.injectedMessages);
+      if (afterTool.action == ToolResultHookAction.stop) {
+        stopByHook = true;
+      }
+      controller?.publish(AfterToolCallEvent(this, finalToolResult));
+    }
+
+    _logger.info(
+      '[$name] 🔧 Executed tools\n: ${finalFunctionExecutionResults.map((e) => '${e.name}: Success:${e.isError ? '❌ No' : '✅ Yes'}').join("\n  ")}',
+    );
+
+    return _ToolCallPhase(
+      message: FunctionExecutionResultMessage(
+        results: finalFunctionExecutionResults,
+      ),
+      injectedMessages: injectedMessages,
+      shouldStop:
+          stopByHook || toolExecutionResults.any((result) => result.stopFlag),
+    );
+  }
+
+  ExecutionToolResult _syntheticToolResult(
+    FunctionCall call,
+    ToolCallHookResult result,
+  ) {
+    final supplied = result.syntheticResult;
+    if (supplied != null) {
+      return ExecutionToolResult(
+        id: call.id,
+        name: supplied.name,
+        arguments: supplied.arguments,
+        content: supplied.content,
+        metadata: supplied.metadata,
+        stopFlag: supplied.stopFlag,
+        isError: supplied.isError,
+      );
+    }
+    final actionText = result.action == ToolCallHookAction.defer
+        ? 'deferred by hook'
+        : 'denied by hook';
+    return ExecutionToolResult(
+      id: call.id,
+      name: call.name,
+      arguments: call.arguments,
+      content:
+          result.syntheticContent ??
+          [TextPart('Tool call ${call.name} $actionText.')],
+      metadata: result.metadata,
+      isError: result.syntheticIsError,
+    );
+  }
+
+  AgentException _hookAbortException(
+    String phase,
+    Exception? error,
+    String? reason,
+  ) {
+    final suffix = reason == null || reason.isEmpty ? '' : ': $reason';
+    return AgentException(
+      AgentExceptionCode.stopByController,
+      'Agent hook aborted at $phase$suffix',
+      error: error,
+    );
   }
 
   void _logModelMessage(ModelMessage message, bool isChunk) {

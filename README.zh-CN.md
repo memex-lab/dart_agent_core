@@ -30,8 +30,8 @@
 - **规划能力**：可选 `PlanMode` 会注入 `write_todos` 工具，让 Agent 在执行过程中维护步骤化任务清单。
 - **上下文压缩**：`LLMBasedContextCompressor` 会在 Token 超阈值时将旧消息总结为情节记忆（episodic memory），并可通过内置 `retrieve_memory` 工具回溯原始消息。
 - **循环检测**：`DefaultLoopDetector` 可识别重复工具调用，也可定期做 LLM 诊断以捕捉更隐蔽的循环。
-- **控制器钩子**：`AgentController` 可在关键节点（运行前、LLM 调用前、工具调用前后）进行拦截，允许宿主应用审批或中止流程。
-- **系统回调**：`systemCallback` 会在每次 LLM 调用前执行，你可以动态修改系统消息、工具列表或请求消息。
+- **控制器事件**：`AgentController` 发布运行、模型调用、工具调用、计划、重试、取消和错误等生命周期事件，用于观测。
+- **Agent Hook**：统一的 `AgentHook` pipeline 可改写模型输入、转换流式分片与最终响应、拒绝/延后/改写工具调用、注入后续上下文、继续最终回合、中止运行，并包裹状态持久化。
 
 ---
 
@@ -39,7 +39,7 @@
 
 ```yaml
 dependencies:
-  dart_agent_core: ^2.0.2
+  dart_agent_core: ^2.0.3
 ```
 
 ---
@@ -521,48 +521,64 @@ final agent = StatefulAgent(
 
 ---
 
-## 控制器钩子
+## 控制器事件
 
-`AgentController` 提供生命周期拦截点：
+`AgentController` 用于观测生命周期事件，不改变 Agent 行为：
 
 ```dart
 final controller = AgentController();
 
-// Pub/Sub: observe events
 controller.on<AfterToolCallEvent>((event) {
   print('Tool ${event.result.name} finished');
 });
-
-// Request/Response: approve or block steps
-controller.registerHandler<BeforeToolCallRequest, BeforeToolCallResponse>(
-  (request) async {
-    if (request.functionCall.name == 'delete_files') {
-      return BeforeToolCallResponse(approve: false);
-    }
-    return BeforeToolCallResponse(approve: true);
-  },
-);
 
 final agent = StatefulAgent(..., controller: controller);
 ```
 
 ---
 
-## 系统回调（System Callback）
+## Agent Hook
 
-如需在每次 LLM 调用前动态调整行为，可使用 `systemCallback`。它可修改系统消息、工具列表和请求消息：
+如需控制 Agent loop，使用 `AgentHook`。Hook 接收 typed context 并返回 typed outcome。只想影响本次模型调用时，改写 request；需要影响后续 loop 或 resume 时，直接写入 `context.state`。
 
 ```dart
-final agent = StatefulAgent(
-  ...
-  systemCallback: (agent, systemMessage, tools, messages) async {
-    final updated = SystemMessage(
-      '${systemMessage?.content ?? ''}\nCurrent time: ${DateTime.now()}',
+class RuntimeContextHook extends AgentHook {
+  @override
+  ModelCallHookResult beforeModelCall(ModelCallHookContext context) {
+    final transientMessage = UserMessage.text(
+      'Current time: ${DateTime.now()}',
     );
-    return (updated, tools, messages);
-  },
+
+    return ModelCallHookResult.proceed(
+      request: context.request.copyWith(
+        requestMessages: [
+          ...context.request.requestMessages,
+          transientMessage,
+        ],
+      ),
+    );
+  }
+}
+
+class DeleteFilePolicyHook extends AgentHook {
+  @override
+  ToolCallHookResult beforeToolCall(ToolCallHookContext context) {
+    if (context.call.name != 'delete_file') {
+      return ToolCallHookResult.proceed(context.call);
+    }
+    return ToolCallHookResult.deny(
+      content: [TextPart('delete_file is blocked by local policy.')],
+    );
+  }
+}
+
+final agent = StatefulAgent(
+  ...,
+  hooks: [RuntimeContextHook(), DeleteFilePolicyHook()],
 );
 ```
+
+可用 hook phase 包括 `beforeRun`、`beforeModelCall`、`onModelChunk`、`afterModelCall`、`beforeToolCall`、`afterToolCall`、`onTurnCompletion`、`beforePersistState`、`afterPersistState` 和 `afterRun`。
 
 ---
 
@@ -577,7 +593,8 @@ final agent = StatefulAgent(
 - [动态技能系统](example/simple_agent_with_skills_example.dart)
 - [基于文件的 Skill + JavaScript 脚本执行](example/simple_agent_with_directory_skills_example.dart)
 - [子 Agent 委派](example/simple_agent_with_sub_agent_example.dart)
-- [控制器钩子（观测与拦截）](example/simple_agent_with_controller_example.dart)
+- [控制器事件 + Hook 策略](example/simple_agent_with_controller_example.dart)
+- [统一 Agent Hook](example/simple_agent_with_hooks_example.dart)
 - [Bedrock 下的 Claude Extended Thinking](example/simple_agent_with_thinking_example.dart)
 - [OpenAI](example/simple_agent_with_openai_example.dart)
 - [Gemini](example/simple_agent_with_gemini_example.dart)
@@ -595,7 +612,7 @@ final agent = StatefulAgent(
 
 ## 文档
 
-- [架构与生命周期](doc/architecture.md) — Agent 循环、流式事件、控制器钩子、循环检测、取消机制
+- [架构与生命周期](doc/architecture.md) — Agent 循环、流式事件、Agent Hook、循环检测、取消机制
 - [LLM Provider 与配置](doc/providers.md) — OpenAI、Gemini、Bedrock、Claude、Kimi、Qwen、GLM 等配置，ModelConfig，代理支持
 - [工具与规划](doc/tools_and_planning.md) — 工具创建、参数映射、AgentToolResult、技能、子 Agent、规划器
 - [状态与记忆管理](doc/state_and_memory.md) — AgentState、FileStateStorage、上下文压缩、情节记忆

@@ -85,6 +85,7 @@ Future<AgentToolResult> _delegateTask(
       withGeneralPrinciples: parentAgent.withGeneralPrinciples,
       loopDetector: parentAgent.loopDetector,
       autoSaveStateFunc: parentAgent.autoSaveStateFunc,
+      hooks: parentAgent.hooks,
       controller: parentAgent.controller,
       isSubAgent: true,
     );

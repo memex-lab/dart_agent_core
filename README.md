@@ -30,8 +30,8 @@
 - **Planning**: Optional `PlanMode` injects a `write_todos` tool that lets the agent maintain a step-by-step task list during execution.
 - **Context compression**: `LLMBasedContextCompressor` summarizes old messages into episodic memory when the token count exceeds a threshold. The agent can recall original messages via the built-in `retrieve_memory` tool.
 - **Loop detection**: `DefaultLoopDetector` catches repeated identical tool calls and can run periodic LLM-based diagnosis for subtler loops.
-- **Controller hooks**: `AgentController` provides request/response interception points around every major step (before run, before LLM call, before/after each tool call), allowing the host application to approve or stop execution.
-- **System callback**: A `systemCallback` function runs before every LLM call, letting you dynamically modify the system message, tools, or request messages.
+- **Controller events**: `AgentController` publishes observation events for run, model, tool, plan, retry, cancellation, and error lifecycle steps.
+- **Agent hooks**: A unified `AgentHook` pipeline can rewrite model inputs, transform streaming chunks and final responses, deny/defer/rewrite tool calls, inject follow-up context, continue final turns, abort runs, and wrap state persistence.
 
 ---
 
@@ -39,7 +39,7 @@
 
 ```yaml
 dependencies:
-  dart_agent_core: ^2.0.2
+  dart_agent_core: ^2.0.3
 ```
 
 ---
@@ -433,48 +433,64 @@ Compressed history is stored as episodic memories. The agent can retrieve the or
 
 ---
 
-## Controller Hooks
+## Controller Events
 
-`AgentController` provides lifecycle interception points:
+`AgentController` observes lifecycle events without changing agent behavior:
 
 ```dart
 final controller = AgentController();
 
-// Pub/Sub: observe events
 controller.on<AfterToolCallEvent>((event) {
   print('Tool ${event.result.name} finished');
 });
-
-// Request/Response: approve or block steps
-controller.registerHandler<BeforeToolCallRequest, BeforeToolCallResponse>(
-  (request) async {
-    if (request.functionCall.name == 'delete_files') {
-      return BeforeToolCallResponse(approve: false);
-    }
-    return BeforeToolCallResponse(approve: true);
-  },
-);
 
 final agent = StatefulAgent(..., controller: controller);
 ```
 
 ---
 
-## System Callback
+## Agent Hooks
 
-For dynamic per-call modifications, use `systemCallback` — it runs before every LLM call and can modify the system message, tools, and request messages:
+Use `AgentHook` for controlled changes to the agent loop. Hooks receive typed context objects and return typed outcomes. To affect only the current model call, rewrite the request. To persist context for later loops or resume, write to `context.state`.
 
 ```dart
-final agent = StatefulAgent(
-  ...
-  systemCallback: (agent, systemMessage, tools, messages) async {
-    final updated = SystemMessage(
-      '${systemMessage?.content ?? ''}\nCurrent time: ${DateTime.now()}',
+class RuntimeContextHook extends AgentHook {
+  @override
+  ModelCallHookResult beforeModelCall(ModelCallHookContext context) {
+    final transientMessage = UserMessage.text(
+      'Current time: ${DateTime.now()}',
     );
-    return (updated, tools, messages);
-  },
+
+    return ModelCallHookResult.proceed(
+      request: context.request.copyWith(
+        requestMessages: [
+          ...context.request.requestMessages,
+          transientMessage,
+        ],
+      ),
+    );
+  }
+}
+
+class DeleteFilePolicyHook extends AgentHook {
+  @override
+  ToolCallHookResult beforeToolCall(ToolCallHookContext context) {
+    if (context.call.name != 'delete_file') {
+      return ToolCallHookResult.proceed(context.call);
+    }
+    return ToolCallHookResult.deny(
+      content: [TextPart('delete_file is blocked by local policy.')],
+    );
+  }
+}
+
+final agent = StatefulAgent(
+  ...,
+  hooks: [RuntimeContextHook(), DeleteFilePolicyHook()],
 );
 ```
+
+Available hook phases include `beforeRun`, `beforeModelCall`, `onModelChunk`, `afterModelCall`, `beforeToolCall`, `afterToolCall`, `onTurnCompletion`, `beforePersistState`, `afterPersistState`, and `afterRun`.
 
 ---
 
@@ -489,7 +505,8 @@ See the [`example/`](example) directory:
 - [Dynamic skill system](example/simple_agent_with_skills_example.dart)
 - [File-system Skills + JavaScript scripts execute](example/simple_agent_with_directory_skills_example.dart)
 - [Sub-agent delegation](example/simple_agent_with_sub_agent_example.dart)
-- [Controller hooks (observe & block)](example/simple_agent_with_controller_example.dart)
+- [Controller events + hook policy](example/simple_agent_with_controller_example.dart)
+- [Unified agent hooks](example/simple_agent_with_hooks_example.dart)
 - [Claude extended thinking via Bedrock](example/simple_agent_with_thinking_example.dart)
 - [OpenAI](example/simple_agent_with_openai_example.dart)
 - [Gemini](example/simple_agent_with_gemini_example.dart)
@@ -507,7 +524,7 @@ See the [`example/`](example) directory:
 
 ## Documentation
 
-- [Architecture & Lifecycle](doc/architecture.md) — Agent loop, streaming events, controller hooks, loop detection, cancellation
+- [Architecture & Lifecycle](doc/architecture.md) — Agent loop, streaming events, agent hooks, loop detection, cancellation
 - [LLM Providers & Configuration](doc/providers.md) — OpenAI, Gemini, Bedrock setup, ModelConfig, proxy support
 - [Tools & Planning](doc/tools_and_planning.md) — Tool creation, parameter mapping, AgentToolResult, skills, sub-agents, planner
 - [State & Memory Management](doc/state_and_memory.md) — AgentState, FileStateStorage, context compression, episodic memory
