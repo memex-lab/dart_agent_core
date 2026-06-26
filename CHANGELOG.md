@@ -1,3 +1,8 @@
+## 2.0.4
+
+- Fix repeated `systemPromptHistory` / `toolsHistory` entries across separate agent runs by initializing prompt/tool hashes from the last recorded state snapshot instead of starting each run from `null`.
+- Preserve the existing change-detection semantics: system prompts are compared by content hash, and tools are compared by sorted tool-name hash.
+
 ## 2.0.3
 
 - **BREAKING**: replace `systemCallback`, legacy pre/post tool hooks, turn-completion hooks, and controller request/response loop controls with the unified `AgentHook` pipeline. `AgentController` is now used for observation events; flow control belongs in hooks.

@@ -875,8 +875,8 @@ class StatefulAgent {
       await _prepareDirectorySkills(effectiveInput);
       state.currentLoopCount = 0;
       state.currentLoopUsages.clear();
-      int? lastSystemPromptHash;
-      int? lastToolsHash;
+      int? lastSystemPromptHash = _lastRecordedSystemPromptHash();
+      int? lastToolsHash = _lastRecordedToolsHash();
 
       state.isRunning = true;
       state.lastError = null;
@@ -1356,6 +1356,25 @@ class StatefulAgent {
       systemPromptHash: currentSystemPromptHash,
       toolsHash: currentToolsHash,
     );
+  }
+
+  int? _lastRecordedSystemPromptHash() {
+    if (state.systemPromptHistory.isEmpty) {
+      return null;
+    }
+    return state.systemPromptHistory.last.content.hashCode;
+  }
+
+  int? _lastRecordedToolsHash() {
+    if (state.toolsHistory.isEmpty) {
+      return null;
+    }
+    final toolNames =
+        state.toolsHistory.last.tools
+            .map((t) => t['name'] as String? ?? '')
+            .toList()
+          ..sort();
+    return toolNames.join(',').hashCode;
   }
 
   Future<ModelMessage?> _applyModelChunkPhase(

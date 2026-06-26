@@ -208,6 +208,84 @@ void main() {
     ]);
   });
 
+  test(
+    'system and tool history only append when model context changes',
+    () async {
+      final client = _CapturingLLMClient([_textReply('done')]);
+      final state = AgentState.empty();
+      final tools = [_echoTool((args) => args['value'])];
+      final agent = StatefulAgent(
+        name: 'hooked',
+        client: client,
+        modelConfig: ModelConfig(model: 'fake-model'),
+        state: state,
+        systemPrompts: ['stable system'],
+        withGeneralPrinciples: false,
+        disableSubAgents: true,
+        tools: tools,
+      );
+
+      await agent.run([UserMessage.text('first')], useStream: false);
+
+      expect(state.systemPromptHistory, hasLength(1));
+      expect(state.toolsHistory, hasLength(1));
+      expect(state.systemPromptHistory.single.content, 'stable system');
+
+      await agent.run([UserMessage.text('second')], useStream: false);
+
+      expect(state.systemPromptHistory, hasLength(1));
+      expect(state.toolsHistory, hasLength(1));
+
+      agent.systemPrompts.add('changed system');
+      tools[0] = Tool(
+        name: 'echo',
+        description: 'changed echo',
+        parameters: const {
+          'type': 'object',
+          'properties': {
+            'value': {'type': 'string'},
+          },
+          'required': ['value'],
+        },
+        parameterMode: ToolParameterMode.object,
+        executable: (Map<String, dynamic> args) => args['value'],
+      );
+
+      await agent.run([UserMessage.text('third')], useStream: false);
+
+      expect(state.systemPromptHistory, hasLength(2));
+      expect(state.toolsHistory, hasLength(1));
+      expect(
+        state.systemPromptHistory.last.content,
+        'stable system\n\nchanged system',
+      );
+      expect(state.toolsHistory.single.tools.single['description'], 'echo');
+
+      tools[0] = Tool(
+        name: 'echo_v2',
+        description: 'changed echo',
+        parameters: const {
+          'type': 'object',
+          'properties': {
+            'value': {'type': 'string'},
+          },
+          'required': ['value'],
+        },
+        parameterMode: ToolParameterMode.object,
+        executable: (Map<String, dynamic> args) => args['value'],
+      );
+
+      await agent.run([UserMessage.text('fourth')], useStream: false);
+
+      expect(state.systemPromptHistory, hasLength(2));
+      expect(state.toolsHistory, hasLength(2));
+      expect(
+        state.toolsHistory.last.tools.single['description'],
+        'changed echo',
+      );
+    },
+  );
+
   test('beforeModelCall can respond without calling the model', () async {
     final client = _CapturingLLMClient([]);
     final state = AgentState.empty();
