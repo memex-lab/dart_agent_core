@@ -79,7 +79,7 @@ Future<AgentToolResult> _delegateTask(
       compressor: parentAgent.compressor,
       planMode: PlanMode.auto,
       skills: parentAgent.skills,
-      skillDirectoryPath: parentAgent.skillDirectoryPath,
+      skillDirectoryPaths: parentAgent.skillDirectoryPaths,
       javaScriptRuntime: parentAgent.javaScriptRuntime,
       javaScriptBridgeRegistry: parentAgent.javaScriptBridgeRegistry,
       withGeneralPrinciples: parentAgent.withGeneralPrinciples,

@@ -432,11 +432,11 @@ class StatefulAgent {
   /// Modular capabilities that can be activated/deactivated.
   final List<Skill>? skills;
 
-  /// Directory-mode skills root path (SKILL.md).
+  /// Directory-mode skills root paths (SKILL.md).
   ///
   /// This mode is mutually exclusive with [skills].
   /// You must provide the agent with read, LS, and other file-operation tools yourself; otherwise directory skill functionality will not work.
-  final String? skillDirectoryPath;
+  final List<String>? skillDirectoryPaths;
   final JavaScriptRuntime? javaScriptRuntime;
   final JavaScriptBridgeRegistry? javaScriptBridgeRegistry;
 
@@ -484,7 +484,7 @@ class StatefulAgent {
     this.compressor,
     this.planMode,
     this.skills,
-    this.skillDirectoryPath,
+    this.skillDirectoryPaths,
     this.javaScriptRuntime,
     this.javaScriptBridgeRegistry,
     this.subAgents,
@@ -500,9 +500,9 @@ class StatefulAgent {
   }) : assert(
          skills == null ||
              skills.isEmpty ||
-             skillDirectoryPath == null ||
-             skillDirectoryPath == '',
-         'skills and skillDirectoryPath cannot be enabled at the same time',
+             skillDirectoryPaths == null ||
+             skillDirectoryPaths.isEmpty,
+         'skills and skillDirectoryPaths cannot be enabled at the same time',
        ),
        hooks = hooks ?? const [],
        systemPrompts = systemPrompts ?? [] {
@@ -661,7 +661,7 @@ class StatefulAgent {
   }
 
   bool get _isDirectorySkillModeEnabled =>
-      (skillDirectoryPath?.trim().isNotEmpty ?? false);
+      (skillDirectoryPaths?.isNotEmpty ?? false);
 
   void registerJavaScriptBridgeChannel(
     String channel,
@@ -689,13 +689,22 @@ class StatefulAgent {
       return 'Error: script_path must be an absolute path.';
     }
 
-    final root = fsAbsolutePath(skillDirectoryPath!);
-    final rootWithSep = root.endsWith(fsPathSeparator)
-        ? root
-        : '$root$fsPathSeparator';
     final resolvedAbsolute = fsAbsolutePath(scriptPath);
-    if (resolvedAbsolute != root && !resolvedAbsolute.startsWith(rootWithSep)) {
-      return 'Error: script path must stay under skillDirectoryPath.';
+    final rootPaths = skillDirectoryPaths!
+        .map((p) => fsAbsolutePath(p.trim()))
+        .toList();
+    final matchedRoot = rootPaths.firstWhere(
+      (root) {
+        final rootWithSep = root.endsWith(fsPathSeparator)
+            ? root
+            : '$root$fsPathSeparator';
+        return resolvedAbsolute == root ||
+            resolvedAbsolute.startsWith(rootWithSep);
+      },
+      orElse: () => '',
+    );
+    if (matchedRoot.isEmpty) {
+      return 'Error: script path must stay under one of the skillDirectoryPaths.';
     }
     if (!resolvedAbsolute.toLowerCase().endsWith('.js')) {
       return 'Error: only .js script files are supported.';
@@ -750,18 +759,24 @@ class StatefulAgent {
   ) async {
     if (!_isDirectorySkillModeEnabled) return;
 
-    final root = skillDirectoryPath!.trim();
-    final loaded = await loadDirectorySkillsFromRoot(root);
-    _directorySkills = loaded.skills;
-
-    for (final error in loaded.errors) {
-      _logger.warning(
-        '[$name] directory skill load error (${error.path}): ${error.message}',
-      );
+    final allSkills = <DirectorySkillMetadata>[];
+    for (final rawPath in skillDirectoryPaths!) {
+      final root = rawPath.trim();
+      if (root.isEmpty) continue;
+      final loaded = await loadDirectorySkillsFromRoot(root);
+      allSkills.addAll(loaded.skills);
+      for (final error in loaded.errors) {
+        _logger.warning(
+          '[$name] directory skill load error (${error.path}): ${error.message}',
+        );
+      }
     }
+    _directorySkills = allSkills;
 
     if (_directorySkills.isEmpty) {
-      _logger.info('[$name] no directory skills found under: $root');
+      _logger.info(
+        '[$name] no directory skills found under: ${skillDirectoryPaths!.join(", ")}',
+      );
       return;
     }
 
