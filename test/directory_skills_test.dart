@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_agent_core/dart_agent_core.dart';
@@ -85,16 +86,11 @@ void main() {
   test('overlapping roots inject the same skill only once', () async {
     final parentRoot = Directory('${tempDirectory.path}/skills')..createSync();
     final projectRoot = Directory('${parentRoot.path}/project')..createSync();
-    final skillFile = File('${projectRoot.path}/demo/SKILL.md')
-      ..createSync(recursive: true)
-      ..writeAsStringSync('''
----
-name: demo
-description: Duplicate-root regression skill.
----
-
-Follow the demo instructions.
-''');
+    final skillFile = _writeSkill(
+      projectRoot,
+      'demo',
+      'Duplicate-root regression skill.',
+    );
     final client = _CapturingLLMClient();
     final state = AgentState.empty();
     final agent = _createAgent(
@@ -124,6 +120,167 @@ Follow the demo instructions.
       hasLength(1),
     );
   });
+
+  test('a single valid root discovers and injects a named skill', () async {
+    final root = Directory('${tempDirectory.path}/single')..createSync();
+    final skillFile = _writeSkill(root, 'single', 'Single-root skill.');
+    final state = AgentState.empty();
+    final agent = _createAgent(state: state, skillDirectoryPaths: [root.path]);
+
+    await agent.run([UserMessage.text(r'Use $single')], useStream: false);
+
+    final injectedSkills = _injectedSkillMessages(state);
+    expect(injectedSkills, hasLength(1));
+    expect(
+      injectedSkills.single.metadata?['skill_path'],
+      skillFile.absolute.path,
+    );
+  });
+
+  test('distinct roots discover and inject all named skills', () async {
+    final systemRoot = Directory('${tempDirectory.path}/system')..createSync();
+    final projectRoot = Directory('${tempDirectory.path}/project')
+      ..createSync();
+    final systemSkill = _writeSkill(
+      systemRoot,
+      'system_skill',
+      'System-level skill.',
+    );
+    final projectSkill = _writeSkill(
+      projectRoot,
+      'project_skill',
+      'Project-level skill.',
+    );
+    final state = AgentState.empty();
+    final agent = _createAgent(
+      state: state,
+      skillDirectoryPaths: [systemRoot.path, projectRoot.path],
+    );
+
+    await agent.run([
+      UserMessage.text(r'Use $system_skill and $project_skill'),
+    ], useStream: false);
+
+    expect(
+      _injectedSkillMessages(
+        state,
+      ).map((message) => message.metadata?['skill_path']),
+      unorderedEquals([systemSkill.absolute.path, projectSkill.absolute.path]),
+    );
+  });
+
+  test(
+    'JavaScript execution allows files inside roots and rejects outside files',
+    () async {
+      final root = Directory('${tempDirectory.path}/allowed')..createSync();
+      final insideScript = File('${root.path}/inside.js')
+        ..writeAsStringSync('// allowed');
+      final outsideScript = File('${tempDirectory.path}/outside.js')
+        ..writeAsStringSync('// rejected');
+      final runtime = _RecordingJavaScriptRuntime();
+      final agent = _createAgent(
+        skillDirectoryPaths: [root.path],
+        javaScriptRuntime: runtime,
+      );
+      final runJavaScript = agent.composeTools().singleWhere(
+        (tool) => tool.name == 'RunJavaScript',
+      );
+
+      final insideResult =
+          await Function.apply(runJavaScript.executable!, [
+                insideScript.absolute.path,
+                null,
+                null,
+              ])
+              as String;
+      final outsideResult =
+          await Function.apply(runJavaScript.executable!, [
+                outsideScript.absolute.path,
+                null,
+                null,
+              ])
+              as String;
+
+      expect(jsonDecode(insideResult), containsPair('success', true));
+      expect(outsideResult, contains('must stay under'));
+      expect(runtime.executedPaths, [insideScript.absolute.path]);
+    },
+  );
+
+  test('clone sub-agents inherit every configured skill root', () async {
+    final systemRoot = Directory('${tempDirectory.path}/system')..createSync();
+    final projectRoot = Directory('${tempDirectory.path}/project')
+      ..createSync();
+    _writeSkill(systemRoot, 'system_skill', 'Inherited system skill.');
+    _writeSkill(projectRoot, 'project_skill', 'Inherited project skill.');
+    final client = _CapturingLLMClient([
+      ModelMessage(
+        model: 'fake-model',
+        functionCalls: [
+          FunctionCall(
+            id: 'delegate-1',
+            name: 'delegate_task',
+            arguments: jsonEncode({
+              'assignee': 'clone',
+              'task_description': 'Complete the delegated task.',
+            }),
+          ),
+        ],
+        stopReason: 'tool_use',
+      ),
+      ModelMessage(
+        model: 'fake-model',
+        textOutput: 'worker done',
+        stopReason: 'stop',
+      ),
+      ModelMessage(
+        model: 'fake-model',
+        textOutput: 'parent done',
+        stopReason: 'stop',
+      ),
+    ]);
+    final agent = _createAgent(
+      client: client,
+      skillDirectoryPaths: [systemRoot.path, projectRoot.path],
+      disableSubAgents: false,
+    );
+
+    await agent.run([
+      UserMessage.text('Delegate this task to a clone.'),
+    ], useStream: false);
+
+    final workerMessages = client.capturedMessages.singleWhere(
+      (messages) => messages.whereType<SystemMessage>().any(
+        (message) => message.content.contains('WORKER AGENT PROTOCOL'),
+      ),
+    );
+    final workerSystemPrompt = workerMessages
+        .whereType<SystemMessage>()
+        .single
+        .content;
+    expect(workerSystemPrompt, contains('Inherited system skill.'));
+    expect(workerSystemPrompt, contains('Inherited project skill.'));
+  });
+}
+
+File _writeSkill(Directory root, String name, String description) {
+  return File('${root.path}/$name/SKILL.md')
+    ..createSync(recursive: true)
+    ..writeAsStringSync('''
+---
+name: $name
+description: $description
+---
+
+Follow the $name instructions.
+''');
+}
+
+List<UserMessage> _injectedSkillMessages(AgentState state) {
+  return state.history.messages
+      .whereType<UserMessage>()
+      .where((message) => message.metadata?['type'] == 'skill_instructions')
+      .toList();
 }
 
 StatefulAgent _createAgent({
@@ -131,6 +288,7 @@ StatefulAgent _createAgent({
   AgentState? state,
   required List<String> skillDirectoryPaths,
   JavaScriptRuntime? javaScriptRuntime,
+  bool disableSubAgents = true,
 }) {
   return StatefulAgent(
     name: 'directory-skills-test',
@@ -140,12 +298,16 @@ StatefulAgent _createAgent({
     skillDirectoryPaths: skillDirectoryPaths,
     javaScriptRuntime: javaScriptRuntime,
     withGeneralPrinciples: false,
-    disableSubAgents: true,
+    disableSubAgents: disableSubAgents,
   );
 }
 
 class _CapturingLLMClient extends LLMClient {
   final capturedMessages = <List<LLMMessage>>[];
+  final List<ModelMessage> replies;
+  int _replyIndex = 0;
+
+  _CapturingLLMClient([this.replies = const []]);
 
   @override
   Future<ModelMessage> generate(
@@ -157,6 +319,9 @@ class _CapturingLLMClient extends LLMClient {
     CancelToken? cancelToken,
   }) async {
     capturedMessages.add(List<LLMMessage>.from(messages));
+    if (replies.isNotEmpty) {
+      return replies[_replyIndex++];
+    }
     return ModelMessage(
       model: modelConfig.model,
       textOutput: 'done',
@@ -173,7 +338,15 @@ class _CapturingLLMClient extends LLMClient {
     bool? jsonOutput,
     CancelToken? cancelToken,
   }) async {
-    throw UnimplementedError('This test client only supports generate().');
+    capturedMessages.add(List<LLMMessage>.from(messages));
+    final reply = replies.isEmpty
+        ? ModelMessage(
+            model: modelConfig.model,
+            textOutput: 'done',
+            stopReason: 'stop',
+          )
+        : replies[_replyIndex++];
+    return Stream.value(StreamingMessage(modelMessage: reply));
   }
 }
 
