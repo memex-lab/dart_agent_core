@@ -1,3 +1,10 @@
+## 2.0.5
+
+- Support multiple file-system Skill roots through `skillDirectoryPaths`.
+- Ignore blank Skill roots when enabling directory mode and authorizing JavaScript execution, preventing an empty entry from expanding access to the current working directory.
+- De-duplicate normalized roots and `SKILL.md` paths so duplicate or overlapping roots do not break name-based Skill activation.
+- Add regression tests and update the English and Chinese Skill configuration documentation.
+
 ## 2.0.4
 
 - Fix repeated `systemPromptHistory` / `toolsHistory` entries across separate agent runs by initializing prompt/tool hashes from the last recorded state snapshot instead of starting each run from `null`.

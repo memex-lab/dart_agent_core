@@ -370,9 +370,12 @@ final agent = StatefulAgent(
   ...
   // 宿主应用需提供文件工具（例如 Read、LS）
   tools: [readTool, lsTool],
-  skillDirectoryPath: '/absolute/path/to/skills_root',
+  skillDirectoryPaths: [
+    '/absolute/path/to/system_skills',
+    '/absolute/path/to/project_skills',
+  ],
   javaScriptRuntime: NodeJavaScriptRuntime(), // 可选，开启 RunJavaScript 能力
-  skills: null, // 与 skillDirectoryPath 不能同时使用
+  skills: null, // 与 skillDirectoryPaths 不能同时使用
 );
 ```
 
@@ -397,7 +400,7 @@ import 'package:flutter_js/flutter_js.dart' as flutter_js;
 
 final agent = StatefulAgent(
   ...
-  skillDirectoryPath: '/absolute/path/to/skills_root',
+  skillDirectoryPaths: ['/absolute/path/to/skills_root'],
   javaScriptRuntime: FlutterJavaScriptRuntime(
     runtime: flutter_js.getJavascriptRuntime(),
   ),

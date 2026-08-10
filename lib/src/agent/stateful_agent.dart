@@ -501,7 +501,7 @@ class StatefulAgent {
          skills == null ||
              skills.isEmpty ||
              skillDirectoryPaths == null ||
-             skillDirectoryPaths.isEmpty,
+             skillDirectoryPaths.every((path) => path.trim().isEmpty),
          'skills and skillDirectoryPaths cannot be enabled at the same time',
        ),
        hooks = hooks ?? const [],
@@ -660,8 +660,22 @@ class StatefulAgent {
     return toolsCopy;
   }
 
+  List<String> get _normalizedSkillDirectoryPaths {
+    final normalized = <String>[];
+    final seen = <String>{};
+    for (final rawPath in skillDirectoryPaths ?? const <String>[]) {
+      final path = rawPath.trim();
+      if (path.isEmpty) continue;
+      final absolutePath = fsAbsolutePath(path);
+      if (seen.add(absolutePath)) {
+        normalized.add(absolutePath);
+      }
+    }
+    return normalized;
+  }
+
   bool get _isDirectorySkillModeEnabled =>
-      (skillDirectoryPaths?.isNotEmpty ?? false);
+      _normalizedSkillDirectoryPaths.isNotEmpty;
 
   void registerJavaScriptBridgeChannel(
     String channel,
@@ -690,19 +704,14 @@ class StatefulAgent {
     }
 
     final resolvedAbsolute = fsAbsolutePath(scriptPath);
-    final rootPaths = skillDirectoryPaths!
-        .map((p) => fsAbsolutePath(p.trim()))
-        .toList();
-    final matchedRoot = rootPaths.firstWhere(
-      (root) {
-        final rootWithSep = root.endsWith(fsPathSeparator)
-            ? root
-            : '$root$fsPathSeparator';
-        return resolvedAbsolute == root ||
-            resolvedAbsolute.startsWith(rootWithSep);
-      },
-      orElse: () => '',
-    );
+    final rootPaths = _normalizedSkillDirectoryPaths;
+    final matchedRoot = rootPaths.firstWhere((root) {
+      final rootWithSep = root.endsWith(fsPathSeparator)
+          ? root
+          : '$root$fsPathSeparator';
+      return resolvedAbsolute == root ||
+          resolvedAbsolute.startsWith(rootWithSep);
+    }, orElse: () => '');
     if (matchedRoot.isEmpty) {
       return 'Error: script path must stay under one of the skillDirectoryPaths.';
     }
@@ -757,14 +766,18 @@ class StatefulAgent {
   Future<void> _prepareDirectorySkills(
     List<LLMMessage> incomingMessages,
   ) async {
-    if (!_isDirectorySkillModeEnabled) return;
+    final rootPaths = _normalizedSkillDirectoryPaths;
+    if (rootPaths.isEmpty) return;
 
     final allSkills = <DirectorySkillMetadata>[];
-    for (final rawPath in skillDirectoryPaths!) {
-      final root = rawPath.trim();
-      if (root.isEmpty) continue;
+    final seenSkillPaths = <String>{};
+    for (final root in rootPaths) {
       final loaded = await loadDirectorySkillsFromRoot(root);
-      allSkills.addAll(loaded.skills);
+      for (final skill in loaded.skills) {
+        if (seenSkillPaths.add(fsAbsolutePath(skill.pathToSkillMd))) {
+          allSkills.add(skill);
+        }
+      }
       for (final error in loaded.errors) {
         _logger.warning(
           '[$name] directory skill load error (${error.path}): ${error.message}',
@@ -775,7 +788,7 @@ class StatefulAgent {
 
     if (_directorySkills.isEmpty) {
       _logger.info(
-        '[$name] no directory skills found under: ${skillDirectoryPaths!.join(", ")}',
+        '[$name] no directory skills found under: ${rootPaths.join(", ")}',
       );
       return;
     }

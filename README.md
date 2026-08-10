@@ -282,9 +282,12 @@ final agent = StatefulAgent(
   ...
   // Required file tools should be provided by host app (for example: Read, LS).
   tools: [readTool, lsTool],
-  skillDirectoryPath: '/absolute/path/to/skills_root',
+  skillDirectoryPaths: [
+    '/absolute/path/to/system_skills',
+    '/absolute/path/to/project_skills',
+  ],
   javaScriptRuntime: NodeJavaScriptRuntime(), // optional, enables RunJavaScript
-  skills: null, // do not use with skillDirectoryPath
+  skills: null, // do not use with skillDirectoryPaths
 );
 ```
 
@@ -309,7 +312,7 @@ import 'package:flutter_js/flutter_js.dart' as flutter_js;
 
 final agent = StatefulAgent(
   ...
-  skillDirectoryPath: '/absolute/path/to/skills_root',
+  skillDirectoryPaths: ['/absolute/path/to/skills_root'],
   javaScriptRuntime: FlutterJavaScriptRuntime(
     runtime: flutter_js.getJavascriptRuntime(),
   ),
