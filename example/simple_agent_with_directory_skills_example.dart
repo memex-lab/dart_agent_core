@@ -7,7 +7,7 @@ import 'package:logging/logging.dart';
 /// 1) Creates a temporary skill directory with:
 ///    - `hello_script/SKILL.md`
 ///    - `hello_script/scripts/hello.js`
-/// 2) Enables directory-skill mode via [skillDirectoryPath].
+/// 2) Enables directory-skill mode via [skillDirectoryPaths].
 /// 3) Enables JavaScript execution via [NodeJavaScriptRuntime].
 /// 4) Registers a bridge channel (`local.greeting`) that JS can call.
 void main() async {
@@ -60,7 +60,7 @@ void main() async {
         'You are a helpful assistant. Use directory skills when relevant.',
       ],
       tools: [readTool, lsTool],
-      skillDirectoryPath: skillRoot,
+      skillDirectoryPaths: [skillRoot],
       javaScriptRuntime: NodeJavaScriptRuntime(),
       skills: null,
     );
