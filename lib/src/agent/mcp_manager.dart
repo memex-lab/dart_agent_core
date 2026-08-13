@@ -4,8 +4,8 @@ import 'dart:convert';
 import 'package:logging/logging.dart';
 
 import 'mcp_session.dart';
-import '../../core/tool.dart';
-import '../../agent/stateful_agent.dart';
+import '../core/tool.dart';
+import 'stateful_agent.dart';
 
 final _logger = Logger('McpManager');
 

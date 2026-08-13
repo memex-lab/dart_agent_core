@@ -19,7 +19,7 @@ import '../core/tool.dart';
 import 'context_compressor.dart';
 import 'planner.dart';
 import 'memory.dart';
-import '../eval/mcp/mcp_manager.dart';
+import 'mcp_manager.dart';
 
 part 'agent_hook.dart';
 

@@ -29,4 +29,4 @@ export 'src/agent/exception.dart';
 export 'src/agent/sub_agent.dart';
 export 'src/agent/loop_detector.dart';
 export 'src/agent/javascript_runtime.dart';
-export 'src/eval/mcp/mcp.dart';
+export 'src/agent/mcp.dart';
