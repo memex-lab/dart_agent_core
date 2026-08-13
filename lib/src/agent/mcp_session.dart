@@ -1,19 +1,11 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:logging/logging.dart';
 import 'package:mcp_dart/mcp_dart.dart' as mcp;
 
 final _logger = Logger('McpSession');
+const _maxDiscoveryPages = 1000;
 
 /// Represents the connection state of an MCP server session.
-enum McpConnectionState {
-  disconnected,
-  connecting,
-  connected,
-  error,
-}
+enum McpConnectionState { disconnected, connecting, connected, error }
 
 /// An MCP tool definition as returned by the server.
 class McpToolDef {
@@ -66,11 +58,7 @@ class McpPromptDef {
   final String? description;
   final List<McpPromptArgument>? arguments;
 
-  const McpPromptDef({
-    required this.name,
-    this.description,
-    this.arguments,
-  });
+  const McpPromptDef({required this.name, this.description, this.arguments});
 
   factory McpPromptDef.fromJson(Map<String, dynamic> json) {
     return McpPromptDef(
@@ -114,7 +102,6 @@ class McpSession {
 
   mcp.McpClient? _client;
   mcp.Transport? _transport;
-  Process? _process;
 
   List<McpToolDef> _tools = [];
   List<McpResourceDef> _resources = [];
@@ -134,10 +121,7 @@ class McpSession {
   String? get instructions => _instructions;
   bool get isConnected => _state == McpConnectionState.connected;
 
-  McpSession({
-    required this.serverName,
-    required this.config,
-  });
+  McpSession({required this.serverName, required this.config});
 
   /// Connect to the MCP server and perform initial discovery.
   Future<void> connect() async {
@@ -178,33 +162,15 @@ class McpSession {
     }
 
     final args = config.args ?? [];
-    final env = Map<String, String>.from(config.env ?? {});
 
-    // Merge with current process environment
-    env.addAll(Platform.environment);
+    _logger.info(
+      '[MCP:$serverName] Starting process: $command ${args.join(" ")}',
+    );
 
-    _logger.info('[MCP:$serverName] Starting process: $command ${args.join(" ")}');
-
-    _process = await Process.start(command, args, environment: env);
-
-    // Handle process errors
-    _process!.stderr
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())
-        .listen((line) {
-      _logger.fine('[MCP:$serverName][stderr] $line');
-    });
-
-    _process!.exitCode.then((code) {
-      _logger.warning('[MCP:$serverName] Process exited with code $code');
-      _state = McpConnectionState.disconnected;
-    });
-
-    // Create Stdio transport
     final serverParams = mcp.StdioServerParameters(
       command: command,
       args: args,
-      environment: env,
+      environment: config.env,
       includeParentEnvironment: true,
     );
 
@@ -213,9 +179,7 @@ class McpSession {
     // Create client and connect
     _client = mcp.McpClient(
       mcp.Implementation(name: 'x_agent', version: '1.0.0'),
-      options: mcp.McpClientOptions(
-        capabilities: mcp.ClientCapabilities(),
-      ),
+      options: mcp.McpClientOptions(capabilities: mcp.ClientCapabilities()),
     );
 
     await _client!.connect(_transport!);
@@ -246,9 +210,7 @@ class McpSession {
 
     _client = mcp.McpClient(
       mcp.Implementation(name: 'x_agent', version: '1.0.0'),
-      options: mcp.McpClientOptions(
-        capabilities: mcp.ClientCapabilities(),
-      ),
+      options: mcp.McpClientOptions(capabilities: mcp.ClientCapabilities()),
     );
 
     await _client!.connect(_transport!);
@@ -263,59 +225,103 @@ class McpSession {
       final serverVersion = _client!.getServerVersion();
       if (serverVersion != null) {
         _serverDescription = serverVersion.description;
-        _logger.info('[MCP:$serverName] Server description: ${_serverDescription ?? "none"}');
+        _logger.info(
+          '[MCP:$serverName] Server description: ${_serverDescription ?? "none"}',
+        );
       }
     } catch (_) {}
 
     try {
       _instructions = _client!.getInstructions();
       if (_instructions != null && _instructions!.isNotEmpty) {
-        _logger.info('[MCP:$serverName] Server instructions available (${_instructions!.length} chars)');
+        _logger.info(
+          '[MCP:$serverName] Server instructions available (${_instructions!.length} chars)',
+        );
       }
     } catch (_) {}
 
     try {
-      final toolsResult = await _client!.listTools();
-      _tools = toolsResult.tools
-          .map((t) => McpToolDef.fromJson(t.toJson()))
-          .toList();
+      final tools = await _collectPages<mcp.Tool>((cursor) async {
+        final result = await _client!.listTools(
+          params: cursor == null ? null : mcp.ListToolsRequest(cursor: cursor),
+        );
+        return (items: result.tools, nextCursor: result.nextCursor);
+      });
+      _tools = tools.map((t) => McpToolDef.fromJson(t.toJson())).toList();
       _logger.info('[MCP:$serverName] Discovered ${_tools.length} tools');
     } catch (e) {
       _logger.warning('[MCP:$serverName] Failed to list tools: $e');
     }
 
     try {
-      final resourcesResult = await _client!.listResources();
-      _resources = resourcesResult.resources
+      final resources = await _collectPages<mcp.Resource>((cursor) async {
+        final result = await _client!.listResources(
+          params: cursor == null
+              ? null
+              : mcp.ListResourcesRequest(cursor: cursor),
+        );
+        return (items: result.resources, nextCursor: result.nextCursor);
+      });
+      _resources = resources
           .map((r) => McpResourceDef.fromJson(r.toJson()))
           .toList();
-      _logger.info('[MCP:$serverName] Discovered ${_resources.length} resources');
+      _logger.info(
+        '[MCP:$serverName] Discovered ${_resources.length} resources',
+      );
     } catch (e) {
       _logger.warning('[MCP:$serverName] Failed to list resources: $e');
     }
 
     try {
-      final promptsResult = await _client!.listPrompts();
-      _prompts = promptsResult.prompts
-          .map((p) => McpPromptDef.fromJson(p.toJson()))
-          .toList();
+      final prompts = await _collectPages<mcp.Prompt>((cursor) async {
+        final result = await _client!.listPrompts(
+          params: cursor == null
+              ? null
+              : mcp.ListPromptsRequest(cursor: cursor),
+        );
+        return (items: result.prompts, nextCursor: result.nextCursor);
+      });
+      _prompts = prompts.map((p) => McpPromptDef.fromJson(p.toJson())).toList();
       _logger.info('[MCP:$serverName] Discovered ${_prompts.length} prompts');
     } catch (e) {
       _logger.warning('[MCP:$serverName] Failed to list prompts: $e');
     }
   }
 
+  Future<List<T>> _collectPages<T>(
+    Future<({List<T> items, String? nextCursor})> Function(String? cursor)
+    loadPage,
+  ) async {
+    final items = <T>[];
+    final seenCursors = <String>{};
+    String? cursor;
+
+    for (var page = 0; page < _maxDiscoveryPages; page++) {
+      final result = await loadPage(cursor);
+      items.addAll(result.items);
+
+      final nextCursor = result.nextCursor;
+      if (nextCursor == null) return items;
+      if (!seenCursors.add(nextCursor)) {
+        throw StateError('MCP server repeated pagination cursor "$nextCursor"');
+      }
+      cursor = nextCursor;
+    }
+
+    throw StateError('MCP discovery exceeded $_maxDiscoveryPages pages');
+  }
+
   /// Call a specific tool on the MCP server.
-  Future<dynamic> callTool(String toolName, Map<String, dynamic> arguments) async {
+  Future<dynamic> callTool(
+    String toolName,
+    Map<String, dynamic> arguments,
+  ) async {
     if (_client == null || _state != McpConnectionState.connected) {
       throw StateError('MCP session [$serverName] is not connected');
     }
 
     try {
-      final request = mcp.CallToolRequest(
-        name: toolName,
-        arguments: arguments,
-      );
+      final request = mcp.CallToolRequest(name: toolName, arguments: arguments);
       final result = await _client!.callTool(request);
       final content = _formatContent(result.content);
       if (result.isError == true) {
@@ -341,7 +347,9 @@ class McpSession {
         if (c is mcp.TextResourceContents) {
           buffer.writeln(c.text);
         } else if (c is mcp.BlobResourceContents) {
-          buffer.writeln('[Blob: ${c.mimeType ?? "unknown"}, ${c.blob.length} bytes]');
+          buffer.writeln(
+            '[Blob: ${c.mimeType ?? "unknown"}, ${c.blob.length} bytes]',
+          );
         } else {
           buffer.writeln(c.toJson().toString());
         }
@@ -353,7 +361,10 @@ class McpSession {
   }
 
   /// Get a specific prompt from the MCP server.
-  Future<String> getPrompt(String promptName, Map<String, String>? arguments) async {
+  Future<String> getPrompt(
+    String promptName,
+    Map<String, String>? arguments,
+  ) async {
     if (_client == null || _state != McpConnectionState.connected) {
       throw StateError('MCP session [$serverName] is not connected');
     }
@@ -413,8 +424,6 @@ class McpSession {
     } catch (_) {}
     _client = null;
     _transport = null;
-    _process?.kill();
-    _process = null;
     _tools = [];
     _resources = [];
     _prompts = [];

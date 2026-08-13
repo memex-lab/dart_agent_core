@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:logging/logging.dart';
@@ -31,6 +30,17 @@ class McpManager {
 
   /// Connect to multiple MCP servers from their configurations.
   Future<void> connectAll(List<McpConnectionConfig> configs) async {
+    final serverNames = <String>{};
+    for (final config in configs) {
+      if (!serverNames.add(config.serverName)) {
+        throw ArgumentError.value(
+          config.serverName,
+          'configs',
+          'MCP server names must be unique',
+        );
+      }
+    }
+
     // Disconnect existing sessions first
     await disconnectAll();
 
@@ -41,7 +51,9 @@ class McpManager {
         await session.connect();
         _sessions[config.serverName] = session;
       } catch (e) {
-        _logger.severe('[McpManager] Failed to connect to "${config.serverName}": $e');
+        _logger.severe(
+          '[McpManager] Failed to connect to "${config.serverName}": $e',
+        );
         // Continue connecting other servers even if one fails
       }
     }
@@ -107,16 +119,23 @@ class McpManager {
     }
     lines.add('');
     lines.add('### How to use MCP Servers');
-    lines.add('- **Discovery**: Use `mcp_list_tools` to get the full tool list for a server.');
-    lines.add('- **Execution**: Use `mcp_call_tool` to invoke a discovered tool.');
-    lines.add('- **Resources**: Use `mcp_list_resources` and `mcp_read_resource` for data access.');
-    lines.add('- **Prompts**: Use `mcp_list_prompts` and `mcp_get_prompt` for prompt templates.');
-    lines.add('- Always specify the `server_name` parameter when calling any MCP bridge tool.');
-
-    return SystemPromptPart(
-      name: 'mcp_servers',
-      content: lines.join('\n'),
+    lines.add(
+      '- **Discovery**: Use `mcp_list_tools` to get the full tool list for a server.',
     );
+    lines.add(
+      '- **Execution**: Use `mcp_call_tool` to invoke a discovered tool.',
+    );
+    lines.add(
+      '- **Resources**: Use `mcp_list_resources` and `mcp_read_resource` for data access.',
+    );
+    lines.add(
+      '- **Prompts**: Use `mcp_list_prompts` and `mcp_get_prompt` for prompt templates.',
+    );
+    lines.add(
+      '- Always specify the `server_name` parameter when calling any MCP bridge tool.',
+    );
+
+    return SystemPromptPart(name: 'mcp_servers', content: lines.join('\n'));
   }
 
   /// Get the fixed bridge tools that the Agent registers.

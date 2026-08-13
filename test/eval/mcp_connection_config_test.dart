@@ -77,7 +77,10 @@ void main() {
           headers: {'Authorization': 'Bearer token123'},
         );
 
-        expect(config.headers, containsPair('Authorization', 'Bearer token123'));
+        expect(
+          config.headers,
+          containsPair('Authorization', 'Bearer token123'),
+        );
       });
 
       test('http config with allowedHosts', () {

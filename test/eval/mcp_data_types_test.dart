@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:dart_agent_core/dart_agent_core.dart';
 import 'package:test/test.dart';
 

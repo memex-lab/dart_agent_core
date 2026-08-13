@@ -1,9 +1,5 @@
-import 'dart:convert';
-
 import 'package:dart_agent_core/dart_agent_core.dart';
 import 'package:test/test.dart';
-
-import '_helpers.dart';
 
 void main() {
   group('McpManager', () {
