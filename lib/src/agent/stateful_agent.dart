@@ -19,6 +19,7 @@ import '../core/tool.dart';
 import 'context_compressor.dart';
 import 'planner.dart';
 import 'memory.dart';
+import 'mcp_manager.dart';
 
 part 'agent_hook.dart';
 
@@ -440,6 +441,14 @@ class StatefulAgent {
   final JavaScriptRuntime? javaScriptRuntime;
   final JavaScriptBridgeRegistry? javaScriptBridgeRegistry;
 
+  /// MCP Manager for interacting with MCP (Model Context Protocol) servers.
+  ///
+  /// When provided, the agent will:
+  /// - Include MCP server info in the system prompt (Layer 1: progressive disclosure)
+  /// - Register bridge tools (mcp_list_tools, mcp_call_tool, etc.)
+  /// - Manage MCP session lifecycle
+  final McpManager? mcpManager;
+
   /// Registered sub-agents for task delegation.
   final List<SubAgent>? subAgents;
 
@@ -487,6 +496,7 @@ class StatefulAgent {
     this.skillDirectoryPaths,
     this.javaScriptRuntime,
     this.javaScriptBridgeRegistry,
+    this.mcpManager,
     this.subAgents,
     this.withGeneralPrinciples = true,
     this.autoSaveStateFunc,
@@ -554,6 +564,14 @@ class StatefulAgent {
       final skillInstruction = buildSkillSystemPrompt(state, skills);
       if (skillInstruction != null) {
         parts.add(skillInstruction);
+      }
+    }
+
+    // 3.5 MCP Servers (progressive disclosure: Layer 1 - server list only)
+    if (mcpManager != null && mcpManager!.hasServers) {
+      final mcpInstruction = mcpManager!.buildMcpSystemPrompt();
+      if (mcpInstruction != null) {
+        parts.add(mcpInstruction);
       }
     }
 
@@ -655,6 +673,11 @@ class StatefulAgent {
     // 4. Inject memory tools
     if (state.history.episodicMemories.isNotEmpty) {
       toolsCopy.addAll(memoryTools);
+    }
+
+    // 5. Inject MCP bridge tools
+    if (mcpManager != null && mcpManager!.hasServers) {
+      toolsCopy.addAll(mcpManager!.getBridgeTools());
     }
 
     return toolsCopy;
@@ -1239,6 +1262,11 @@ class StatefulAgent {
         ),
       );
       await _persistState('finally', runError: error);
+      // Disconnect MCP sessions when run ends
+      // (MCP connections are per-run, not per-agent lifetime)
+      if (mcpManager != null && mcpManager!.hasServers) {
+        await mcpManager!.disconnectAll();
+      }
       controller?.publish(
         AgentStoppedEvent(this, effectiveInput, modelMessages, error: error),
       );
