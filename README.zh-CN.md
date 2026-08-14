@@ -12,7 +12,7 @@
 
 </div>
 
-`dart_agent_core` 是一个 mobile-first、local-first 的 Dart Agent 框架，实现了包含工具调用、状态持久化、多轮记忆、Skill 系统、上下文压缩与 Agent 评估的完整 agentic loop。它可连接主流 LLM 提供商（OpenAI、Gemini、Claude 及任何 OpenAI 兼容 API），并将工具编排、流式输出、规划、子 Agent 委派等能力全部放在 Dart 侧，适合直接在 Flutter 应用中使用，而不依赖 Python 或 Node.js 后端。
+`dart_agent_core` 是一个 mobile-first、local-first 的 Dart Agent 框架，实现了包含工具调用、状态持久化、多轮记忆、Skill 系统、上下文压缩、MCP 与 Agent 评估的完整 agentic loop。它可连接主流 LLM 提供商（OpenAI、Gemini、Claude 及任何 OpenAI 兼容 API），并将工具编排、流式输出、规划、子 Agent 委派等能力全部放在 Dart 侧，适合直接在 Flutter 应用中使用，而不依赖 Python 或 Node.js 后端。
 
 ---
 
@@ -20,6 +20,7 @@
 
 - **多 Provider 支持**：提供统一的 `LLMClient` 接口，内置支持 OpenAI（Chat Completions 与 Responses API）、Google Gemini、Anthropic Claude（直连与 AWS Bedrock）。同时，由于大量国产大模型兼容 OpenAI API，可通过 `OpenAIClient` 直接接入 Kimi、通义千问、智谱 GLM、Ollama 等；通过 `ResponsesClient` 接入火山引擎豆包；通过 `ClaudeClient` 接入 MiniMax。
 - **工具调用**：将任意 Dart 函数封装为带 JSON Schema 的工具。Agent 会自动发起调用、回填结果并循环执行直到任务完成。工具支持两种参数模式：函数模式（通过 `Function.apply` 进行位置参数/命名参数映射）和对象模式（将所有参数作为 `Map<String, dynamic>` 直接传入）。工具可返回 `AgentToolResult`，携带多模态内容、元数据或停止信号。
+- **Model Context Protocol（MCP）**：连接本地 stdio 或远程 Streamable HTTP MCP Server。Agent 通过渐进式披露桥接层按需发现并调用 Server 提供的工具、资源和 Prompt。
 - **多模态输入**：`UserMessage` 支持文本、图片、音频、视频和文档等内容片段。模型输出可包含文本、图片、视频和音频。
 - **有状态会话**：`AgentState` 追踪对话历史、Token 使用量、激活技能、计划与自定义元数据。`FileStateStorage` 可将状态以 JSON 持久化到磁盘。
 - **Agent 评估**：直接对 Dart Agent 代码运行评估套件，支持 task、grader、transcript、record/replay、报告，以及 pass@k / pass^k 指标。
@@ -39,7 +40,7 @@
 
 ```yaml
 dependencies:
-  dart_agent_core: ^2.0.4
+  dart_agent_core: ^2.1.0
 ```
 
 ---
@@ -329,6 +330,37 @@ Future<AgentToolResult> generateChart(String query) async {
 
 ---
 
+## Model Context Protocol（MCP）
+
+在每次运行前先连接 `McpManager`，再将它传给 `StatefulAgent`。Agent 会注入六个固定桥接工具，让模型按需发现和使用 MCP 工具、资源及 Prompt，无需把所有远程 Schema 都塞进系统提示词。
+
+```dart
+final mcpManager = McpManager();
+await mcpManager.connectAll([
+  McpConnectionConfig(
+    serverName: 'workspace',
+    type: McpTransportType.http,
+    url: 'https://example.com/mcp',
+    headers: {'Authorization': 'Bearer $mcpToken'},
+  ),
+]);
+
+final agent = StatefulAgent(
+  ...,
+  mcpManager: mcpManager,
+);
+
+await agent.run([
+  UserMessage.text('使用可用的 MCP Server 检查工作区。'),
+]);
+```
+
+HTTP transport 支持包括 Web 在内的全部平台；stdio transport 会启动本地进程，仅适用于 Dart IO 平台。MCP 连接以单次 Agent run 为生命周期：`run()` / `runStream()` 清理时会自动断开，因此后续运行前需要再次调用 `connectAll()`。
+
+传输配置、生命周期和桥接工具详见 [MCP 指南](doc/mcp.zh-CN.md)与 [可运行示例](example/simple_agent_with_mcp_example.dart)。
+
+---
+
 ## Skill 系统
 
 `dart_agent_core` 支持两种 Skill 类型：
@@ -598,6 +630,7 @@ final agent = StatefulAgent(
 - [子 Agent 委派](example/simple_agent_with_sub_agent_example.dart)
 - [控制器事件 + Hook 策略](example/simple_agent_with_controller_example.dart)
 - [统一 Agent Hook](example/simple_agent_with_hooks_example.dart)
+- [Model Context Protocol（MCP）](example/simple_agent_with_mcp_example.dart)
 - [Bedrock 下的 Claude Extended Thinking](example/simple_agent_with_thinking_example.dart)
 - [OpenAI](example/simple_agent_with_openai_example.dart)
 - [Gemini](example/simple_agent_with_gemini_example.dart)
@@ -618,6 +651,7 @@ final agent = StatefulAgent(
 - [架构与生命周期](doc/architecture.md) — Agent 循环、流式事件、Agent Hook、循环检测、取消机制
 - [LLM Provider 与配置](doc/providers.md) — OpenAI、Gemini、Bedrock、Claude、Kimi、Qwen、GLM 等配置，ModelConfig，代理支持
 - [工具与规划](doc/tools_and_planning.md) — 工具创建、参数映射、AgentToolResult、技能、子 Agent、规划器
+- [Model Context Protocol](doc/mcp.zh-CN.md) — stdio/HTTP 连接、渐进式发现、桥接工具、生命周期与平台说明
 - [状态与记忆管理](doc/state_and_memory.md) — AgentState、FileStateStorage、上下文压缩、情节记忆
 - [评估指南](doc/eval-guide.zh-CN.md) — 对齐 Anthropic 方法论的评估子系统：task / grader / suite、pass@k / pass^k、录制回放、Langfuse 上报、跨 run 健康度
 

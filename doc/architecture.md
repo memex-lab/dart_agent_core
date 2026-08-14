@@ -7,7 +7,7 @@
 ### Agent Loop Steps
 
 1. **Compress context** (optional): If a `ContextCompressor` is attached and the token threshold is exceeded, old messages are compressed into episodic memory before the call is made.
-2. **Compose request**: The system message and tool list are assembled dynamically from system prompts, active skills, planner tools, sub-agent tools, and memory tools.
+2. **Compose request**: The system message and tool list are assembled dynamically from system prompts, active skills, planner tools, sub-agent tools, memory tools, and connected MCP servers.
 3. **Run `beforeModelCall` hooks** (optional): Hooks can rewrite the system message, request messages, tools, tool choice, model config, or return a synthetic model response. If a hook wants data to survive later turns or resume, it can write to `context.state`.
 4. **Call LLM**: The formatted message history is sent to the chosen `LLMClient`, unless a hook supplied a synthetic response.
 5. **Run model response hooks** (optional): Streaming chunks pass through `onModelChunk`; the assembled response passes through `afterModelCall`, which can rewrite, retry, or abort.
@@ -50,6 +50,8 @@ await for (final event in agent.runStream([UserMessage.text('Do XYZ')])) {
 ### `run()` vs `runStream()`
 
 `run()` is a convenience wrapper that collects all `fullModelMessage` and `functionCallResult` events and returns them as a `List<LLMMessage>`. Internally it calls `runStream()`.
+
+When an `McpManager` is attached, each run also exposes the MCP server summary and bridge tools. MCP sessions are disconnected in run cleanup; reconnect the manager before starting a later run. See [Model Context Protocol](mcp.md).
 
 ---
 

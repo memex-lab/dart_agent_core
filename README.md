@@ -12,7 +12,7 @@
 
 </div>
 
-`dart_agent_core` is a mobile-first, local-first Dart library that implements a full agentic loop with tool use, state persistence, multi-turn memory, skill system, context compression, and agent evals. It connects to mainstream LLM providers (OpenAI, Gemini, Claude, and any OpenAI-compatible API) and handles the orchestration layer — tool calling, streaming, planning, sub-agent delegation — entirely in Dart, making it suitable for Flutter apps without a Python or Node.js backend.
+`dart_agent_core` is a mobile-first, local-first Dart library that implements a full agentic loop with tool use, state persistence, multi-turn memory, skill system, context compression, MCP, and agent evals. It connects to mainstream LLM providers (OpenAI, Gemini, Claude, and any OpenAI-compatible API) and handles the orchestration layer — tool calling, streaming, planning, sub-agent delegation — entirely in Dart, making it suitable for Flutter apps without a Python or Node.js backend.
 
 ---
 
@@ -20,6 +20,7 @@
 
 - **Multi-provider support**: Unified `LLMClient` interface for OpenAI (Chat Completions & Responses API), Google Gemini, and Anthropic Claude via AWS Bedrock.
 - **Tool use**: Wrap any Dart function as a tool with a JSON Schema definition. The agent dispatches calls, feeds results back, and loops until done. Tools support two parameter modes: function mode (positional/named parameter mapping via `Function.apply`) and object mode (receive all arguments as a `Map<String, dynamic>`). Tools can return `AgentToolResult` to carry multimodal content, metadata, or a stop signal.
+- **Model Context Protocol (MCP)**: Connect to local stdio or remote Streamable HTTP MCP servers. The agent discovers and invokes server tools, resources, and prompts through a compact progressive-disclosure bridge.
 - **Multimodal input**: `UserMessage` accepts text, images, audio, video, and documents as content parts. Model responses can include text, images, video, and audio.
 - **Stateful sessions**: `AgentState` tracks conversation history, token usage, active skills, plan, and custom metadata. `FileStateStorage` persists state to disk as JSON.
 - **Agent evals**: Run evaluation suites against your Dart agent code with tasks, graders, transcripts, record/replay, reports, and pass@k / pass^k metrics.
@@ -39,7 +40,7 @@
 
 ```yaml
 dependencies:
-  dart_agent_core: ^2.0.4
+  dart_agent_core: ^2.1.0
 ```
 
 ---
@@ -238,6 +239,37 @@ Future<AgentToolResult> generateChart(String query) async {
 ```
 
 See [Tools & Planning doc](doc/tools_and_planning.md) for parameter modes, async tools, and more.
+
+---
+
+## Model Context Protocol (MCP)
+
+Connect an `McpManager` before a run, then pass it to `StatefulAgent`. The agent adds six bridge tools that let the model discover and use MCP tools, resources, and prompts on demand without injecting every remote schema into the system prompt.
+
+```dart
+final mcpManager = McpManager();
+await mcpManager.connectAll([
+  McpConnectionConfig(
+    serverName: 'workspace',
+    type: McpTransportType.http,
+    url: 'https://example.com/mcp',
+    headers: {'Authorization': 'Bearer $mcpToken'},
+  ),
+]);
+
+final agent = StatefulAgent(
+  ...,
+  mcpManager: mcpManager,
+);
+
+await agent.run([
+  UserMessage.text('Inspect the workspace with the available MCP server.'),
+]);
+```
+
+HTTP transport works on all supported platforms, including Web. Stdio transport launches a local process and is available only on Dart IO platforms. MCP connections are scoped to one agent run: `run()` / `runStream()` disconnects them during cleanup, so call `connectAll()` again before a later run.
+
+See the [MCP guide](doc/mcp.md) and [runnable example](example/simple_agent_with_mcp_example.dart) for transport configuration, lifecycle, and bridge-tool details.
 
 ---
 
@@ -510,6 +542,7 @@ See the [`example/`](example) directory:
 - [Sub-agent delegation](example/simple_agent_with_sub_agent_example.dart)
 - [Controller events + hook policy](example/simple_agent_with_controller_example.dart)
 - [Unified agent hooks](example/simple_agent_with_hooks_example.dart)
+- [Model Context Protocol (MCP)](example/simple_agent_with_mcp_example.dart)
 - [Claude extended thinking via Bedrock](example/simple_agent_with_thinking_example.dart)
 - [OpenAI](example/simple_agent_with_openai_example.dart)
 - [Gemini](example/simple_agent_with_gemini_example.dart)
@@ -530,6 +563,7 @@ See the [`example/`](example) directory:
 - [Architecture & Lifecycle](doc/architecture.md) — Agent loop, streaming events, agent hooks, loop detection, cancellation
 - [LLM Providers & Configuration](doc/providers.md) — OpenAI, Gemini, Bedrock setup, ModelConfig, proxy support
 - [Tools & Planning](doc/tools_and_planning.md) — Tool creation, parameter mapping, AgentToolResult, skills, sub-agents, planner
+- [Model Context Protocol](doc/mcp.md) — Stdio/HTTP connections, progressive discovery, bridge tools, lifecycle, platform notes
 - [State & Memory Management](doc/state_and_memory.md) — AgentState, FileStateStorage, context compression, episodic memory
 - [Evaluating Agents](doc/eval-guide.md) — Anthropic-aligned eval subsystem: tasks, graders, suites, pass@k / pass^k, record/replay, Langfuse export, cross-run health
 

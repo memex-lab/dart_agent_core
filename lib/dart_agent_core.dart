@@ -1,5 +1,5 @@
 /// A mobile-first, local-first Dart library for building stateful, tool-using AI agents
-/// with multi-provider LLM support (OpenAI, Gemini, AWS Bedrock).
+/// with multi-provider LLM and Model Context Protocol (MCP) support.
 ///
 /// This library provides a unified interface for interacting with various LLMs,
 /// managing agent state, handling tool calls, and maintaining conversation history.

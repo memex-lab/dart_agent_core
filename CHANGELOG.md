@@ -1,3 +1,12 @@
+## 2.1.0
+
+- Add Model Context Protocol (MCP) support to `StatefulAgent` through the new `McpManager`, `McpSession`, and `McpConnectionConfig` APIs.
+- Support local stdio MCP servers on Dart IO platforms and remote Streamable HTTP MCP servers on all supported platforms, including Web.
+- Add progressive capability disclosure with six fixed bridge tools for discovering and invoking MCP tools, resources, and prompts without placing every server schema in the system prompt.
+- Support multiple named MCP servers, complete paginated capability discovery, custom HTTP headers, and explicit stdio environment overrides.
+- Keep MCP session cleanup scoped to each agent run, reject duplicate server names before connecting, and avoid duplicate stdio server processes.
+- Add a runnable MCP example, English and Chinese MCP guides, and real stdio integration tests covering process lifecycle, environment propagation, pagination, and duplicate-name validation.
+
 ## 2.0.5
 
 - Support multiple file-system Skill roots through `skillDirectoryPaths`.
