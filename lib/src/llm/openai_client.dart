@@ -595,8 +595,20 @@ class OpenAIResponseTransformer
         'system_fingerprint': data["system_fingerprint"],
       };
 
-      // 0. Handle Usage (often in last chunk with empty choices)
-      if (data['usage'] != null) {
+      // 0. Handle Usage (often in last chunk with empty choices).
+      // SiliconFlow / vLLM continuous_usage_stats put `usage` on every
+      // content chunk — only take the usage-only path when there is no
+      // delta payload, otherwise fall through so content is not dropped.
+      final choices = data['choices'] as List? ?? [];
+      final previewDelta = choices.isNotEmpty ? choices[0]['delta'] : null;
+      final hasDeltaPayload =
+          previewDelta != null &&
+          (previewDelta['content'] != null ||
+              previewDelta['reasoning_content'] != null ||
+              previewDelta['audio'] != null ||
+              previewDelta['tool_calls'] != null);
+
+      if (data['usage'] != null && !hasDeltaPayload) {
         final u = data['usage'];
         final modelUsage = ModelUsage(
           promptTokens: u['prompt_tokens'] ?? 0,
@@ -611,9 +623,8 @@ class OpenAIResponseTransformer
 
         // Some providers (e.g. GLM) send finish_reason and usage in the same
         // chunk. Extract finish_reason from choices if present so it is not lost.
-        final usageChoices = data['choices'] as List? ?? [];
-        if (usageChoices.isNotEmpty) {
-          final usageChoice = usageChoices[0];
+        if (choices.isNotEmpty) {
+          final usageChoice = choices[0];
           final inlineFinishReason = usageChoice['finish_reason'];
           if (inlineFinishReason != null) {
             pendingFinishReason = inlineFinishReason;
@@ -664,7 +675,6 @@ class OpenAIResponseTransformer
         continue;
       }
 
-      final choices = data['choices'] as List? ?? [];
       if (choices.isEmpty) continue;
 
       final choice = choices[0];
