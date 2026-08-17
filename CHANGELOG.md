@@ -1,3 +1,9 @@
+## 2.1.1
+
+- Fix OpenAI-compatible streaming responses that report cumulative usage on content, reasoning, audio, tool-call, or terminal chunks.
+- Preserve streamed payloads while retaining the latest usage snapshot, and combine trailing usage-only chunks with the pending finish reason and tool calls.
+- Add regression coverage for continuous usage, combined terminal payloads, and standard usage-only terminal chunks.
+
 ## 2.1.0
 
 - Add Model Context Protocol (MCP) support to `StatefulAgent` through the new `McpManager`, `McpSession`, and `McpConnectionConfig` APIs.

@@ -553,6 +553,7 @@ class OpenAIResponseTransformer
   Stream<ModelMessage> bind(Stream<Map<String, dynamic>> stream) async* {
     final Map<int, Map<String, dynamic>> toolCallBuffer = {};
     String? pendingFinishReason;
+    ModelUsage? latestUsage;
 
     List<FunctionCall> finalizeToolCalls() {
       List<FunctionCall> finalFunctionCalls = [];
@@ -595,22 +596,13 @@ class OpenAIResponseTransformer
         'system_fingerprint': data["system_fingerprint"],
       };
 
-      // 0. Handle Usage (often in last chunk with empty choices).
-      // SiliconFlow / vLLM continuous_usage_stats put `usage` on every
-      // content chunk — only take the usage-only path when there is no
-      // delta payload, otherwise fall through so content is not dropped.
-      final choices = data['choices'] as List? ?? [];
-      final previewDelta = choices.isNotEmpty ? choices[0]['delta'] : null;
-      final hasDeltaPayload =
-          previewDelta != null &&
-          (previewDelta['content'] != null ||
-              previewDelta['reasoning_content'] != null ||
-              previewDelta['audio'] != null ||
-              previewDelta['tool_calls'] != null);
-
-      if (data['usage'] != null && !hasDeltaPayload) {
+      // Usage is independent from the delta payload. Some OpenAI-compatible
+      // providers include a cumulative usage snapshot on every content chunk,
+      // while OpenAI normally sends a final usage-only chunk.
+      ModelUsage? chunkUsage;
+      if (data['usage'] != null) {
         final u = data['usage'];
-        final modelUsage = ModelUsage(
+        chunkUsage = ModelUsage(
           promptTokens: u['prompt_tokens'] ?? 0,
           completionTokens: u['completion_tokens'] ?? 0,
           totalTokens: u['total_tokens'] ?? 0,
@@ -620,62 +612,29 @@ class OpenAIResponseTransformer
           originalUsage: u,
           model: modelConfig.model,
         );
+        latestUsage = chunkUsage;
+      }
 
-        // Some providers (e.g. GLM) send finish_reason and usage in the same
-        // chunk. Extract finish_reason from choices if present so it is not lost.
-        if (choices.isNotEmpty) {
-          final usageChoice = choices[0];
-          final inlineFinishReason = usageChoice['finish_reason'];
-          if (inlineFinishReason != null) {
-            pendingFinishReason = inlineFinishReason;
-          }
-          // Also accumulate any tool_calls in this chunk
-          final usageDelta = usageChoice['delta'];
-          if (usageDelta != null && usageDelta['tool_calls'] != null) {
-            final toolCalls = usageDelta['tool_calls'] as List;
-            for (final tc in toolCalls) {
-              final index = tc['index'] as int;
-              if (!toolCallBuffer.containsKey(index)) {
-                toolCallBuffer[index] = {'id': '', 'name': '', 'arguments': ''};
-              }
-              final buffer = toolCallBuffer[index]!;
-              if (tc['id'] != null) buffer['id'] = tc['id'];
-              final fn = tc['function'];
-              if (fn != null) {
-                if (fn['name'] != null) {
-                  buffer['name'] = (buffer['name'] as String) + fn['name'];
-                }
-                if (fn['arguments'] != null) {
-                  buffer['arguments'] =
-                      (buffer['arguments'] as String) + fn['arguments'];
-                }
-              }
-            }
-          }
-        }
-
-        // If we have a pending finish reason, yield it now combined with usage
+      final choices = data['choices'] as List? ?? [];
+      if (choices.isEmpty) {
         if (pendingFinishReason != null) {
           yield ModelMessage(
             stopReason: pendingFinishReason,
             functionCalls: finalizeToolCalls(),
-            usage: modelUsage,
+            usage: latestUsage,
             metadata: metadata,
             model: modelConfig.model,
           );
           pendingFinishReason = null;
-        } else {
-          // Just yield usage/metadata if no pending stop (or already yielded)
+        } else if (chunkUsage != null) {
           yield ModelMessage(
-            usage: modelUsage,
+            usage: chunkUsage,
             metadata: metadata,
             model: modelConfig.model,
           );
         }
         continue;
       }
-
-      if (choices.isEmpty) continue;
 
       final choice = choices[0];
       final delta = choice['delta'];
@@ -750,6 +709,18 @@ class OpenAIResponseTransformer
         // Buffer the finish reason and wait for potential usage chunk
         pendingFinishReason = finishReason;
       }
+
+      // Preserve cumulative usage from payload chunks, but keep a finish
+      // reason pending. Providers such as vLLM may send a final usage-only
+      // chunk after a terminal payload chunk; that later snapshot must be
+      // combined with the stop event.
+      if (chunkUsage != null && pendingFinishReason == null) {
+        yield ModelMessage(
+          usage: chunkUsage,
+          metadata: metadata,
+          model: modelConfig.model,
+        );
+      }
     }
 
     // Stream ended. If we still have a pending finish reason (meaning no usage chunk arrived),
@@ -758,6 +729,7 @@ class OpenAIResponseTransformer
       yield ModelMessage(
         stopReason: pendingFinishReason,
         functionCalls: finalizeToolCalls(),
+        usage: latestUsage,
         model: modelConfig.model,
       );
     }
