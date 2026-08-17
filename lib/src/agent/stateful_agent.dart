@@ -714,8 +714,12 @@ class StatefulAgent {
   Future<String> _runJavaScriptScript(
     String scriptPath,
     String? args,
-    int? timeoutMs,
-  ) async {
+    int? timeoutMs, {
+    CancelToken? cancelToken,
+  }) async {
+    if (cancelToken?.isCancelled ?? false) {
+      return 'Error: JavaScript execution was cancelled.';
+    }
     if (!_isDirectorySkillModeEnabled) {
       return 'Error: directory skill mode is not enabled.';
     }
@@ -784,6 +788,21 @@ class StatefulAgent {
     final isAbsolute =
         path.startsWith('/') || (path.length >= 2 && path[1] == ':');
     return isAbsolute;
+  }
+
+  String? _javaScriptArgsAsString(dynamic rawArgs) {
+    if (rawArgs == null) return null;
+    if (rawArgs is String) return rawArgs;
+    if (rawArgs is Map) return jsonEncode(rawArgs);
+    return rawArgs.toString();
+  }
+
+  int? _javaScriptTimeoutMs(dynamic rawTimeout) {
+    if (rawTimeout is num) return rawTimeout.toInt();
+    if (rawTimeout is String && rawTimeout.trim().isNotEmpty) {
+      return int.tryParse(rawTimeout);
+    }
+    return null;
   }
 
   Future<void> _prepareDirectorySkills(
@@ -1727,9 +1746,6 @@ class StatefulAgent {
     AgentState state, {
     CancelToken? cancelToken,
   }) async {
-    // TODO(skill-scripts): Directory-skill script execution (especially JS sandbox)
-    // should be integrated here, because this is the central tool-call execution path.
-    // We intentionally do not execute scripts for mobile runtime in this iteration.
     final batchCallId = uuid.v4();
     final futures = calls.map((call) async {
       final tool = tools?.firstWhere(
@@ -1766,6 +1782,22 @@ class StatefulAgent {
             arguments: call.arguments,
             content: [TextPart('Error decoding arguments: $e')],
             isError: true,
+          );
+        }
+
+        if (call.name == 'RunJavaScript') {
+          final resultValue = await _runJavaScriptScript(
+            decodedArgs['script_path']?.toString() ?? '',
+            _javaScriptArgsAsString(decodedArgs['args']),
+            _javaScriptTimeoutMs(decodedArgs['timeout_ms']),
+            cancelToken: cancelToken,
+          );
+          return ExecutionToolResult(
+            id: call.id,
+            name: call.name,
+            arguments: call.arguments,
+            content: [TextPart(resultValue)],
+            isError: resultValue.startsWith('Error:'),
           );
         }
 
