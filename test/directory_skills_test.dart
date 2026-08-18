@@ -240,6 +240,8 @@ void main() {
       expect(runtime.executedArgs, [
         {'n': 1},
       ]);
+      expect(runtime.executionContexts.single?.agent, same(agent));
+      expect(runtime.executionContexts.single?.state, same(agent.state));
       final toolResult = agent.state.history.messages
           .whereType<FunctionExecutionResultMessage>()
           .single
@@ -252,6 +254,107 @@ void main() {
       );
     },
   );
+
+  test('custom RunJavaScript tools use their registered executable', () async {
+    var customToolCalls = 0;
+    final client = _CapturingLLMClient([
+      ModelMessage(
+        model: 'fake-model',
+        functionCalls: [
+          FunctionCall(
+            id: 'custom-js',
+            name: 'RunJavaScript',
+            arguments: jsonEncode({'value': 'custom'}),
+          ),
+        ],
+        stopReason: 'tool_use',
+      ),
+      ModelMessage(model: 'fake-model', textOutput: 'done', stopReason: 'stop'),
+    ]);
+    final agent = _createAgent(
+      client: client,
+      skillDirectoryPaths: const [],
+      tools: [
+        Tool(
+          name: 'RunJavaScript',
+          description: 'A user-defined tool with the same name.',
+          executable: (String value) {
+            customToolCalls++;
+            return 'custom:$value';
+          },
+          parameters: {
+            'type': 'object',
+            'properties': {
+              'value': {'type': 'string'},
+            },
+            'required': ['value'],
+          },
+        ),
+      ],
+    );
+
+    await agent.run([
+      UserMessage.text('Run the custom JavaScript tool.'),
+    ], useStream: false);
+
+    expect(customToolCalls, 1);
+    final toolResult = agent.state.history.messages
+        .whereType<FunctionExecutionResultMessage>()
+        .single
+        .results
+        .single;
+    expect(toolResult.isError, isFalse);
+    expect((toolResult.content.single as TextPart).text, 'custom:custom');
+  });
+
+  test('cancelled runs do not start registered tools', () async {
+    var toolCalls = 0;
+    final cancelToken = CancelToken();
+    final client = _CancelAfterGenerateClient(cancelToken, [
+      ModelMessage(
+        model: 'fake-model',
+        functionCalls: [
+          FunctionCall(
+            id: 'cancelled-tool',
+            name: 'custom_tool',
+            arguments: '{}',
+          ),
+        ],
+        stopReason: 'tool_use',
+      ),
+    ]);
+    final agent = _createAgent(
+      client: client,
+      skillDirectoryPaths: const [],
+      tools: [
+        Tool(
+          name: 'custom_tool',
+          description: 'Must not run after cancellation.',
+          executable: () {
+            toolCalls++;
+            return 'unexpected';
+          },
+          parameters: const {'type': 'object', 'properties': {}},
+        ),
+      ],
+    );
+
+    await expectLater(
+      agent.run(
+        [UserMessage.text('Run then cancel.')],
+        useStream: false,
+        cancelToken: cancelToken,
+      ),
+      throwsA(
+        isA<AgentException>().having(
+          (error) => error.code,
+          'code',
+          AgentExceptionCode.cancelled,
+        ),
+      ),
+    );
+    expect(toolCalls, 0);
+  });
 
   test(
     'agent loop sandbox rejects RunJavaScript paths outside skill roots',
@@ -407,6 +510,7 @@ StatefulAgent _createAgent({
   AgentState? state,
   required List<String> skillDirectoryPaths,
   JavaScriptRuntime? javaScriptRuntime,
+  List<Tool>? tools,
   bool disableSubAgents = true,
 }) {
   return StatefulAgent(
@@ -414,6 +518,7 @@ StatefulAgent _createAgent({
     client: client ?? _CapturingLLMClient(),
     modelConfig: ModelConfig(model: 'fake-model'),
     state: state ?? AgentState.empty(),
+    tools: tools,
     skillDirectoryPaths: skillDirectoryPaths,
     javaScriptRuntime: javaScriptRuntime,
     withGeneralPrinciples: false,
@@ -499,6 +604,7 @@ class _CancelAfterGenerateClient extends _CapturingLLMClient {
 class _RecordingJavaScriptRuntime implements JavaScriptRuntime {
   final executedPaths = <String>[];
   final executedArgs = <Map<String, dynamic>?>[];
+  final executionContexts = <AgentCallToolContext?>[];
 
   @override
   Future<JavaScriptExecutionResult> executeFile({
@@ -510,6 +616,7 @@ class _RecordingJavaScriptRuntime implements JavaScriptRuntime {
   }) async {
     executedPaths.add(scriptPath);
     executedArgs.add(args);
+    executionContexts.add(AgentCallToolContext.current);
     return JavaScriptExecutionResult(success: true);
   }
 }
@@ -525,10 +632,7 @@ ModelMessage _runJavaScriptCall({
       FunctionCall(
         id: id,
         name: 'RunJavaScript',
-        arguments: jsonEncode({
-          'script_path': scriptPath,
-          if (args != null) 'args': args,
-        }),
+        arguments: jsonEncode({'script_path': scriptPath, 'args': ?args}),
       ),
     ],
     stopReason: 'tool_use',

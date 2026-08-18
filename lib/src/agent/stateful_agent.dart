@@ -637,8 +637,14 @@ class StatefulAgent {
           name: 'RunJavaScript',
           description:
               'Execute a JavaScript (.js) script from the directory skill workspace.',
-          executable: (String scriptPath, String? args, int? timeoutMs) =>
-              _runJavaScriptScript(scriptPath, args, timeoutMs),
+          executable: (dynamic scriptPath, dynamic args, dynamic timeoutMs) =>
+              _runJavaScriptScript(
+                scriptPath?.toString() ?? '',
+                _javaScriptArgsAsString(args),
+                _javaScriptTimeoutMs(timeoutMs),
+              ),
+          resultIsError: (result) =>
+              result is String && result.startsWith('Error:'),
           parameters: {
             'type': 'object',
             'properties': {
@@ -714,12 +720,8 @@ class StatefulAgent {
   Future<String> _runJavaScriptScript(
     String scriptPath,
     String? args,
-    int? timeoutMs, {
-    CancelToken? cancelToken,
-  }) async {
-    if (cancelToken?.isCancelled ?? false) {
-      return 'Error: JavaScript execution was cancelled.';
-    }
+    int? timeoutMs,
+  ) async {
     if (!_isDirectorySkillModeEnabled) {
       return 'Error: directory skill mode is not enabled.';
     }
@@ -1550,6 +1552,13 @@ class StatefulAgent {
     required List<Tool> availableTools,
     required CancelToken? cancelToken,
   }) async {
+    if (cancelToken?.isCancelled ?? false) {
+      throw AgentException(
+        AgentExceptionCode.cancelled,
+        'Agent cancelled by user',
+        error: cancelToken!.cancelError,
+      );
+    }
     _logger.info(
       '[$name] 🔧 Executing tools\n:  ${toolCalls.map((e) => '${e.name}: ${e.arguments}').join("\n  ")}',
     );
@@ -1785,22 +1794,6 @@ class StatefulAgent {
           );
         }
 
-        if (call.name == 'RunJavaScript') {
-          final resultValue = await _runJavaScriptScript(
-            decodedArgs['script_path']?.toString() ?? '',
-            _javaScriptArgsAsString(decodedArgs['args']),
-            _javaScriptTimeoutMs(decodedArgs['timeout_ms']),
-            cancelToken: cancelToken,
-          );
-          return ExecutionToolResult(
-            id: call.id,
-            name: call.name,
-            arguments: call.arguments,
-            content: [TextPart(resultValue)],
-            isError: resultValue.startsWith('Error:'),
-          );
-        }
-
         // We need to know which parameters are named and their types.
         final properties = (tool.parameters['properties'] as Map? ?? {})
             .cast<String, dynamic>();
@@ -1881,6 +1874,7 @@ class StatefulAgent {
         } else {
           resultValue = result;
         }
+        final isError = tool.resultIsError?.call(resultValue) ?? false;
         bool stopFlag = false;
         List<UserContentPart> resultContent = [];
         Map<String, dynamic>? metadata;
@@ -1902,7 +1896,7 @@ class StatefulAgent {
           arguments: call.arguments,
           content: resultContent,
           stopFlag: stopFlag,
-          isError: false,
+          isError: isError,
           metadata: metadata,
         );
       } catch (e) {

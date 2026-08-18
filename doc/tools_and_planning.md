@@ -118,6 +118,22 @@ Future<AgentToolResult> processPayment(String orderId) async {
 - `stopFlag`: If `true`, the agent loop exits after processing this tool's result
 - `metadata`: Arbitrary data attached to the `FunctionExecutionResult`
 
+For tools that must preserve a legacy return type but encode failures in the
+returned value, use `Tool.resultIsError` to classify the value without throwing:
+
+```dart
+Tool(
+  name: 'legacy_tool',
+  description: 'Calls a legacy API.',
+  executable: callLegacyApi,
+  resultIsError: (result) =>
+      result is String && result.startsWith('Error:'),
+  parameters: const {'type': 'object', 'properties': {}},
+);
+```
+
+Exceptions are always reported as tool errors regardless of this callback.
+
 ### Accessing Agent State Inside a Tool
 
 Tools run inside a `Zone` that carries the current `AgentCallToolContext`. Use `AgentCallToolContext.current` to read session state without passing it as a parameter:

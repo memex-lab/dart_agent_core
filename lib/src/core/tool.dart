@@ -22,6 +22,13 @@ class Tool {
   final List<String> namedParameters;
   final ToolParameterMode parameterMode;
 
+  /// Optionally classifies a successfully returned value as a tool error.
+  ///
+  /// This is useful for tools that preserve a legacy return type while using
+  /// sentinel values to report failures. Exceptions are always treated as
+  /// errors independently of this callback.
+  final bool Function(dynamic result)? resultIsError;
+
   Tool({
     required this.name,
     required this.description,
@@ -29,6 +36,7 @@ class Tool {
     this.executable,
     this.namedParameters = const [],
     this.parameterMode = ToolParameterMode.function,
+    this.resultIsError,
   });
   Map<String, dynamic> toJson() {
     return {

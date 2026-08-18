@@ -1,3 +1,9 @@
+## 2.1.2
+
+- Stop all tool execution when an agent run is already cancelled, including directory-skill JavaScript runtimes.
+- Keep the built-in `RunJavaScript` tool on the standard tool-execution path so `AgentCallToolContext` remains available to runtimes and bridge handlers, without intercepting user-defined tools that share its name.
+- Add `Tool.resultIsError` for tools that return sentinel error values while preserving their existing return type, with regression coverage for dispatch, cancellation, and context propagation.
+
 ## 2.1.1
 
 - Fix OpenAI-compatible streaming responses that report cumulative usage on content, reasoning, audio, tool-call, or terminal chunks.
