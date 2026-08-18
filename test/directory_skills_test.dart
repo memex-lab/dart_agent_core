@@ -207,6 +207,125 @@ void main() {
     },
   );
 
+  test(
+    'agent loop executes RunJavaScript through the central tool path',
+    () async {
+      final root = Directory('${tempDirectory.path}/allowed')..createSync();
+      final script = File('${root.path}/skill.js')
+        ..writeAsStringSync('ctx.args.n');
+      final runtime = _RecordingJavaScriptRuntime();
+      final client = _CapturingLLMClient([
+        _runJavaScriptCall(
+          id: 'js-1',
+          scriptPath: script.absolute.path,
+          args: '{"n":1}',
+        ),
+        ModelMessage(
+          model: 'fake-model',
+          textOutput: 'done',
+          stopReason: 'stop',
+        ),
+      ]);
+      final agent = _createAgent(
+        client: client,
+        skillDirectoryPaths: [root.path],
+        javaScriptRuntime: runtime,
+      );
+
+      await agent.run([
+        UserMessage.text('Run the skill script.'),
+      ], useStream: false);
+
+      expect(runtime.executedPaths, [script.absolute.path]);
+      expect(runtime.executedArgs, [
+        {'n': 1},
+      ]);
+      final toolResult = agent.state.history.messages
+          .whereType<FunctionExecutionResultMessage>()
+          .single
+          .results
+          .single;
+      expect(toolResult.isError, isFalse);
+      expect(
+        jsonDecode((toolResult.content.single as TextPart).text),
+        containsPair('success', true),
+      );
+    },
+  );
+
+  test(
+    'agent loop sandbox rejects RunJavaScript paths outside skill roots',
+    () async {
+      final root = Directory('${tempDirectory.path}/allowed')..createSync();
+      final outside = File('${tempDirectory.path}/outside.js')
+        ..writeAsStringSync('// rejected');
+      final runtime = _RecordingJavaScriptRuntime();
+      final client = _CapturingLLMClient([
+        _runJavaScriptCall(id: 'js-out', scriptPath: outside.absolute.path),
+        ModelMessage(
+          model: 'fake-model',
+          textOutput: 'done',
+          stopReason: 'stop',
+        ),
+      ]);
+      final agent = _createAgent(
+        client: client,
+        skillDirectoryPaths: [root.path],
+        javaScriptRuntime: runtime,
+      );
+
+      await agent.run([
+        UserMessage.text('Run a script outside the skill root.'),
+      ], useStream: false);
+
+      expect(runtime.executedPaths, isEmpty);
+      final toolResult = agent.state.history.messages
+          .whereType<FunctionExecutionResultMessage>()
+          .single
+          .results
+          .single;
+      expect(toolResult.isError, isTrue);
+      expect(
+        (toolResult.content.single as TextPart).text,
+        contains('must stay under one of the skillDirectoryPaths'),
+      );
+    },
+  );
+
+  test(
+    'cancelled RunJavaScript does not start the JavaScript runtime',
+    () async {
+      final root = Directory('${tempDirectory.path}/allowed')..createSync();
+      final script = File('${root.path}/skill.js')..writeAsStringSync('1');
+      final runtime = _RecordingJavaScriptRuntime();
+      final cancelToken = CancelToken();
+      final client = _CancelAfterGenerateClient(cancelToken, [
+        _runJavaScriptCall(id: 'js-cancel', scriptPath: script.absolute.path),
+      ]);
+      final agent = _createAgent(
+        client: client,
+        skillDirectoryPaths: [root.path],
+        javaScriptRuntime: runtime,
+      );
+
+      await expectLater(
+        agent.run(
+          [UserMessage.text('Run then cancel.')],
+          useStream: false,
+          cancelToken: cancelToken,
+        ),
+        throwsA(
+          isA<AgentException>().having(
+            (error) => error.code,
+            'code',
+            AgentExceptionCode.cancelled,
+          ),
+        ),
+      );
+      expect(runtime.executedPaths, isEmpty);
+    },
+  );
+
   test('clone sub-agents inherit every configured skill root', () async {
     final systemRoot = Directory('${tempDirectory.path}/system')..createSync();
     final projectRoot = Directory('${tempDirectory.path}/project')
@@ -350,8 +469,36 @@ class _CapturingLLMClient extends LLMClient {
   }
 }
 
+class _CancelAfterGenerateClient extends _CapturingLLMClient {
+  final CancelToken tokenToCancel;
+
+  _CancelAfterGenerateClient(this.tokenToCancel, [super.replies]);
+
+  @override
+  Future<ModelMessage> generate(
+    List<LLMMessage> messages, {
+    List<Tool>? tools,
+    ToolChoice? toolChoice,
+    required ModelConfig modelConfig,
+    bool? jsonOutput,
+    CancelToken? cancelToken,
+  }) async {
+    final reply = await super.generate(
+      messages,
+      tools: tools,
+      toolChoice: toolChoice,
+      modelConfig: modelConfig,
+      jsonOutput: jsonOutput,
+      cancelToken: cancelToken,
+    );
+    tokenToCancel.cancel('stop');
+    return reply;
+  }
+}
+
 class _RecordingJavaScriptRuntime implements JavaScriptRuntime {
   final executedPaths = <String>[];
+  final executedArgs = <Map<String, dynamic>?>[];
 
   @override
   Future<JavaScriptExecutionResult> executeFile({
@@ -362,8 +509,30 @@ class _RecordingJavaScriptRuntime implements JavaScriptRuntime {
     required JavaScriptBridgeContext bridgeContext,
   }) async {
     executedPaths.add(scriptPath);
+    executedArgs.add(args);
     return JavaScriptExecutionResult(success: true);
   }
+}
+
+ModelMessage _runJavaScriptCall({
+  required String id,
+  required String scriptPath,
+  String? args,
+}) {
+  return ModelMessage(
+    model: 'fake-model',
+    functionCalls: [
+      FunctionCall(
+        id: id,
+        name: 'RunJavaScript',
+        arguments: jsonEncode({
+          'script_path': scriptPath,
+          if (args != null) 'args': args,
+        }),
+      ),
+    ],
+    stopReason: 'tool_use',
+  );
 }
 
 class _TestSkill extends Skill {
