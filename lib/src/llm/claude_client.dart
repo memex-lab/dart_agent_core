@@ -302,14 +302,7 @@ class ClaudeClient extends LLMClient {
                     if (c is TextPart) {
                       return {'type': 'text', 'text': c.text};
                     } else if (c is ImagePart) {
-                      return {
-                        'type': 'image',
-                        'source': {
-                          'type': 'base64',
-                          'media_type': c.mimeType,
-                          'data': c.base64Data,
-                        },
-                      };
+                      return {'type': 'image', 'source': c.claudeImageSource};
                     } else if (c is DocumentPart) {
                       return {
                         'type': 'document',
@@ -350,11 +343,7 @@ class ClaudeClient extends LLMClient {
                         if (p is ImagePart) {
                           return {
                             'type': 'image',
-                            'source': {
-                              'type': 'base64',
-                              'media_type': p.mimeType,
-                              'data': p.base64Data,
-                            },
+                            'source': p.claudeImageSource,
                           };
                         }
                         return null;

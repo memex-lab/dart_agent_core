@@ -287,7 +287,7 @@ Map<String, dynamic> _createRequestBody(
               return {
                 'type': 'image_url',
                 'image_url': {
-                  'url': _convertBase64ToUrl(part.base64Data, part.mimeType),
+                  'url': part.openAiImageUrl,
                   if (part.detail != null) 'detail': part.detail,
                 },
               };
@@ -516,13 +516,6 @@ ModelMessage _parseResponse(
   } catch (e) {
     throw Exception('Unexpected response format from OpenAI: $data');
   }
-}
-
-String _convertBase64ToUrl(String base64Data, String mimeType) {
-  if (base64Data.startsWith("data")) {
-    return base64Data;
-  }
-  return 'data:$mimeType;base64,$base64Data';
 }
 
 class OpenAIChunkDecoder

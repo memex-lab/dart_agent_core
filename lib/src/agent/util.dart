@@ -18,7 +18,11 @@ String buildConversationHistory(
       final content = msg.contents
           .map((p) {
             if (p is TextPart) return p.text;
-            if (p is ImagePart) return '[Media: Image (${p.mimeType})]';
+            if (p is ImagePart) {
+              return p.hasUrl
+                  ? '[Media: Image (url)]'
+                  : '[Media: Image (${p.mimeType})]';
+            }
             if (p is VideoPart) return '[Media: Video (${p.mimeType})]';
             if (p is AudioPart) return '[Media: Audio (${p.mimeType})]';
             if (p is DocumentPart) return '[Media: Document (${p.mimeType})]';

@@ -183,22 +183,51 @@ class TextPart extends UserContentPart {
 class ImagePart extends UserContentPart {
   final String base64Data;
   final String mimeType;
+  final String? url;
   final String? detail;
-  ImagePart(this.base64Data, this.mimeType, {this.detail});
+
+  ImagePart(this.base64Data, this.mimeType, {this.detail, this.url});
+
+  bool get hasUrl => url != null && url!.isNotEmpty;
+
+  void requireBase64(String clientName) {
+    if (hasUrl && base64Data.isEmpty) {
+      throw ArgumentError(
+        '$clientName requires base64 ImagePart data; url-only images are not supported.',
+      );
+    }
+  }
+
+  /// HTTPS URL or data URI for OpenAI Chat Completions / Responses.
+  String get openAiImageUrl {
+    if (hasUrl) return url!;
+    if (base64Data.startsWith('data')) return base64Data;
+    return 'data:$mimeType;base64,$base64Data';
+  }
+
+  /// Anthropic Messages `source` object (`url` or `base64`).
+  Map<String, dynamic> get claudeImageSource {
+    if (hasUrl) {
+      return {'type': 'url', 'url': url};
+    }
+    return {'type': 'base64', 'media_type': mimeType, 'data': base64Data};
+  }
 
   @override
   Map<String, dynamic> toJson() => {
     'type': 'image',
-    'base64Data': base64Data,
+    if (base64Data.isNotEmpty) 'base64Data': base64Data,
     'mimeType': mimeType,
+    if (hasUrl) 'url': url,
     if (detail != null) 'detail': detail,
   };
 
   factory ImagePart.fromJson(Map<String, dynamic> json) {
     return ImagePart(
-      json['base64Data'],
-      json['mimeType'] as String,
-      detail: json['detail'],
+      json['base64Data'] as String? ?? '',
+      json['mimeType'] as String? ?? 'image/jpeg',
+      detail: json['detail'] as String?,
+      url: json['url'] as String?,
     );
   }
 }
