@@ -329,6 +329,7 @@ class BedrockClaudeClient extends LLMClient {
                     if (c is TextPart) {
                       return {'type': 'text', 'text': c.text};
                     } else if (c is ImagePart) {
+                      c.requireBase64('BedrockClaudeClient');
                       return {
                         'type': 'image',
                         'source': {
@@ -368,6 +369,7 @@ class BedrockClaudeClient extends LLMClient {
                           return {'type': 'text', 'text': p.text};
                         }
                         if (p is ImagePart) {
+                          p.requireBase64('BedrockClaudeClient');
                           return {
                             'type': 'image',
                             'source': {

@@ -1,3 +1,9 @@
+## 2.1.3
+
+- Allow `ImagePart` to carry a hosted `url` in addition to base64 data.
+- OpenAI Chat Completions and Responses send that URL as `image_url` instead of wrapping it as a data URI.
+- Anthropic Messages uses `source.type: url` for hosted images. Gemini and Bedrock still require base64.
+
 ## 2.1.2
 
 - Stop all tool execution when an agent run is already cancelled, including directory-skill JavaScript runtimes.

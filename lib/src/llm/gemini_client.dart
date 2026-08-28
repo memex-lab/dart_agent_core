@@ -337,6 +337,7 @@ Map<String, dynamic> _createRequestBody(
         if (part is TextPart) {
           parts.add({'text': part.text});
         } else if (part is ImagePart) {
+          part.requireBase64('GeminiClient');
           parts.add({
             'inlineData': {'mimeType': part.mimeType, 'data': part.base64Data},
           });
@@ -388,6 +389,7 @@ Map<String, dynamic> _createRequestBody(
           if (part is TextPart) {
             // Keep implementation simple for text
           } else if (part is ImagePart) {
+            part.requireBase64('GeminiClient');
             partsList.add({
               'inlineData': {
                 'mimeType': part.mimeType,
