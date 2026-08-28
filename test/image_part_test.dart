@@ -45,6 +45,13 @@ void main() {
       expect(image.url, 'https://cdn.example/a.png');
       expect(image.hasUrl, isTrue);
     });
+
+    test('rejects json without base64 data or a url', () {
+      expect(
+        () => ImagePart.fromJson({'type': 'image', 'mimeType': 'image/png'}),
+        throwsA(isA<FormatException>()),
+      );
+    });
   });
 
   group('OpenAIClient image_url', () {

@@ -223,11 +223,18 @@ class ImagePart extends UserContentPart {
   };
 
   factory ImagePart.fromJson(Map<String, dynamic> json) {
+    final base64Data = json['base64Data'] as String? ?? '';
+    final url = json['url'] as String?;
+    if (base64Data.isEmpty && (url == null || url.isEmpty)) {
+      throw const FormatException(
+        'ImagePart requires either base64Data or url.',
+      );
+    }
     return ImagePart(
-      json['base64Data'] as String? ?? '',
+      base64Data,
       json['mimeType'] as String? ?? 'image/jpeg',
       detail: json['detail'] as String?,
-      url: json['url'] as String?,
+      url: url,
     );
   }
 }
