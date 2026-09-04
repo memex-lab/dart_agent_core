@@ -1,3 +1,8 @@
+## 2.1.4
+
+- Fix Gemini tool-result history by sending `functionResponse` parts with the supported `user` role, restoring function-calling compatibility with Gemini 3.6 while retaining compatibility with earlier models.
+- Add regression coverage for Gemini function-call and function-response roles and IDs.
+
 ## 2.1.3
 
 - Allow `ImagePart` to carry a hosted `url` in addition to base64 data.

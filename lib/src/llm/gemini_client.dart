@@ -327,7 +327,9 @@ Map<String, dynamic> _createRequestBody(
     if (m is ModelMessage) {
       role = 'model';
     } else if (m is FunctionExecutionResultMessage) {
-      role = 'function';
+      // Gemini represents tool results as user content containing a
+      // functionResponse part. `function` is not a supported content role.
+      role = 'user';
     }
 
     List<Map<String, dynamic>> parts = [];
