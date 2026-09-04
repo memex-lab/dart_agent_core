@@ -97,6 +97,8 @@ void main() {
           (contents[1]['parts'] as List).single['functionResponse']
               as Map<String, dynamic>;
 
+      expect(contents[0]['role'], 'model');
+      expect(contents[1]['role'], 'user');
       expect(functionCall['id'], 'call_abc123');
       expect(functionCall['name'], 'Glob');
       expect(functionCall['args'], {'pattern': '*.dart'});
