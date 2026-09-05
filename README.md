@@ -18,7 +18,7 @@
 
 ## Features
 
-- **Multi-provider support**: Unified `LLMClient` interface for OpenAI (Chat Completions & Responses API), Google Gemini, and Anthropic Claude via AWS Bedrock.
+- **Multi-provider support**: Unified `LLMClient` interface for OpenAI (Chat Completions & Responses API), Google Gemini, and Anthropic Claude (direct API and AWS Bedrock). Many OpenAI-compatible models can be used through `OpenAIClient` (Kimi, Qwen, GLM, Ollama, OpenRouter); Doubao through `ResponsesClient`; MiniMax through `ClaudeClient`.
 - **Tool use**: Wrap any Dart function as a tool with a JSON Schema definition. The agent dispatches calls, feeds results back, and loops until done. Tools support two parameter modes: function mode (positional/named parameter mapping via `Function.apply`) and object mode (receive all arguments as a `Map<String, dynamic>`). Tools can return `AgentToolResult` to carry multimodal content, metadata, or a stop signal.
 - **Model Context Protocol (MCP)**: Connect to local stdio or remote Streamable HTTP MCP servers. The agent discovers and invokes server tools, resources, and prompts through a compact progressive-disclosure bridge.
 - **Multimodal input**: `UserMessage` accepts text, images, audio, video, and documents as content parts. Model responses can include text, images, video, and audio.
