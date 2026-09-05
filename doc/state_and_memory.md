@@ -1,5 +1,7 @@
 # State & Memory Management
 
+[English](state_and_memory.md) | [简体中文](state_and_memory.zh-CN.md)
+
 ## `AgentState`
 
 `AgentState` is the serializable snapshot of everything that happened during an agent's lifetime. It lives on the `StatefulAgent` and is updated after every turn.
