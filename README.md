@@ -118,6 +118,10 @@ void main() async {
 
 ## Supported Providers
 
+`dart_agent_core` hides provider differences behind a single `LLMClient`. Initialize the matching client and pass it to `StatefulAgent`.
+
+Many models expose an OpenAI Chat Completions API, so you can point `OpenAIClient` at a custom `baseUrl`.
+
 ### OpenAI (Chat Completions)
 
 ```dart
@@ -166,6 +170,90 @@ Directly calls the Anthropic Messages API, no AWS Bedrock needed.
 final client = ClaudeClient(
   apiKey: Platform.environment['ANTHROPIC_API_KEY'] ?? '',
 );
+```
+
+### Kimi (Moonshot AI)
+
+Kimi is OpenAI Chat Completions compatible. Point `OpenAIClient` at Kimi's `baseUrl`. Models such as `kimi-k2` and `kimi-k2-thinking` work; `reasoning_content` from thinking models is handled automatically.
+
+```dart
+final client = OpenAIClient(
+  apiKey: Platform.environment['MOONSHOT_API_KEY'] ?? '',
+  baseUrl: 'https://api.moonshot.cn/v1',
+);
+final config = ModelConfig(model: 'kimi-k2');
+```
+
+### Qwen (Alibaba DashScope)
+
+DashScope exposes an OpenAI-compatible API.
+
+```dart
+final client = OpenAIClient(
+  apiKey: Platform.environment['DASHSCOPE_API_KEY'] ?? '',
+  baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+);
+final config = ModelConfig(model: 'qwen3.5-plus');
+```
+
+### Zhipu GLM
+
+GLM exposes an OpenAI-compatible API.
+
+```dart
+final client = OpenAIClient(
+  apiKey: Platform.environment['GLM_API_KEY'] ?? '',
+  baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+);
+final config = ModelConfig(model: 'GLM-4.7');
+```
+
+### Volcengine Doubao-Seed
+
+Doubao is compatible with the OpenAI Responses API. Use `ResponsesClient`.
+
+```dart
+final client = ResponsesClient(
+  apiKey: Platform.environment['ARK_API_KEY'] ?? '',
+  baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+);
+final config = ModelConfig(model: 'doubao-seed-1-8-251228');
+```
+
+### MiniMax
+
+MiniMax exposes an Anthropic-compatible API. Use `ClaudeClient`.
+
+```dart
+final client = ClaudeClient(
+  apiKey: Platform.environment['MINIMAX_API_KEY'] ?? '',
+  baseUrl: 'https://api.minimaxi.com/anthropic',
+);
+final config = ModelConfig(model: 'MiniMax-M2.5');
+```
+
+### Ollama (local)
+
+Ollama serves an OpenAI-compatible API locally and does not require an API key.
+
+```dart
+final client = OpenAIClient(
+  apiKey: '', // Ollama does not need an API key
+  baseUrl: 'http://localhost:11434/v1',
+);
+final config = ModelConfig(model: 'qwen2.5:7b');
+```
+
+### OpenRouter
+
+OpenRouter aggregates many models behind an OpenAI-compatible API.
+
+```dart
+final client = OpenAIClient(
+  apiKey: Platform.environment['OPENROUTER_API_KEY'] ?? '',
+  baseUrl: 'https://openrouter.ai/api/v1',
+);
+final config = ModelConfig(model: 'anthropic/claude-opus-4.6');
 ```
 
 All clients support HTTP proxies via `proxyUrl` and configurable retry/timeout parameters. See [Providers doc](doc/providers.md) for details.
