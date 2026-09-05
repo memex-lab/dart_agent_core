@@ -80,6 +80,33 @@ void main() {
       expect(a, isNot(b));
     });
 
+    test('toolChoice flips hash', () {
+      const h = Sha256LLMRequestHash();
+      final a = h.compute(
+        messages: [_msg('hi')],
+        tools: null,
+        modelConfig: _cfg(),
+        toolChoice: ToolChoice(mode: ToolChoiceMode.auto),
+      );
+      final b = h.compute(
+        messages: [_msg('hi')],
+        tools: null,
+        modelConfig: _cfg(),
+        toolChoice: ToolChoice(
+          mode: ToolChoiceMode.required,
+          allowedFunctionNames: const ['foo'],
+        ),
+      );
+      final none = h.compute(
+        messages: [_msg('hi')],
+        tools: null,
+        modelConfig: _cfg(),
+      );
+      expect(a, isNot(b));
+      expect(a, isNot(none));
+      expect(b, isNot(none));
+    });
+
     test('timestamp is stripped by default — UserMessages with different '
         'timestamps still hash equal', () {
       const h = Sha256LLMRequestHash();
