@@ -650,9 +650,9 @@ final agent = StatefulAgent(
 
 - [架构与生命周期](doc/architecture.md) — Agent 循环、流式事件、Agent Hook、循环检测、取消机制
 - [LLM Provider 与配置](doc/providers.md) — OpenAI、Gemini、Bedrock、Claude、Kimi、Qwen、GLM 等配置，ModelConfig，代理支持
-- [工具与规划](doc/tools_and_planning.md) — 工具创建、参数映射、AgentToolResult、技能、子 Agent、规划器
+- [工具与规划](doc/tools_and_planning.zh-CN.md) — 工具创建、参数映射、AgentToolResult、技能、子 Agent、规划器
 - [Model Context Protocol](doc/mcp.zh-CN.md) — stdio/HTTP 连接、渐进式发现、桥接工具、生命周期与平台说明
-- [状态与记忆管理](doc/state_and_memory.md) — AgentState、FileStateStorage、上下文压缩、情节记忆
+- [状态与记忆管理](doc/state_and_memory.zh-CN.md) — AgentState、FileStateStorage、上下文压缩、情节记忆
 - [评估指南](doc/eval-guide.zh-CN.md) — 对齐 Anthropic 方法论的评估子系统：task / grader / suite、pass@k / pass^k、录制回放、Langfuse 上报、跨 run 健康度
 
 ---

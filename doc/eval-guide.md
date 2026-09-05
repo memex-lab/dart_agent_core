@@ -1,5 +1,7 @@
 # dart_agent_core Eval Guide
 
+[English](eval-guide.md) | [简体中文](eval-guide.zh-CN.md)
+
 > A practical guide to evaluating Dart agents.
 
 `dart_agent_core` ships a built-in evaluation subsystem aligned with

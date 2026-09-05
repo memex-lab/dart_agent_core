@@ -1,5 +1,7 @@
 # dart_agent_core Eval Guide
 
+[English](eval-guide.md) | [简体中文](eval-guide.zh-CN.md)
+
 > 给 Dart Agent 加评估的实操指南。
 
 `dart_agent_core` 内置了一套基于 [Anthropic "Demystifying evals for AI
