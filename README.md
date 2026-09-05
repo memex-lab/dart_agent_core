@@ -649,7 +649,7 @@ See the [`example/`](example) directory:
 ## Documentation
 
 - [Architecture & Lifecycle](doc/architecture.md) — Agent loop, streaming events, agent hooks, loop detection, cancellation
-- [LLM Providers & Configuration](doc/providers.md) — OpenAI, Gemini, Bedrock setup, ModelConfig, proxy support
+- [LLM Providers & Configuration](doc/providers.md) — OpenAI, Gemini, Bedrock, Claude, Kimi, Qwen, GLM, Doubao, MiniMax, Ollama, OpenRouter, ModelConfig, proxy support
 - [Tools & Planning](doc/tools_and_planning.md) — Tool creation, parameter mapping, AgentToolResult, skills, sub-agents, planner
 - [Model Context Protocol](doc/mcp.md) — Stdio/HTTP connections, progressive discovery, bridge tools, lifecycle, platform notes
 - [State & Memory Management](doc/state_and_memory.md) — AgentState, FileStateStorage, context compression, episodic memory
