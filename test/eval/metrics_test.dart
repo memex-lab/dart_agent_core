@@ -75,6 +75,10 @@ void main() {
       expect(passCaretK([true], 0), 0.0);
       expect(passCaretK(<bool>[], 1), 0.0);
     });
+
+    test('k > n returns 0.0', () {
+      expect(passCaretK([true, false], 5), 0.0);
+    });
   });
 
   group('ClassificationMetrics', () {

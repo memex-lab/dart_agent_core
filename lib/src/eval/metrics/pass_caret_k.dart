@@ -5,10 +5,11 @@
 /// version because it's intuitive and consistent with how teams report
 /// "X out of Y trials passed" in CI reports.
 ///
-/// Returns 0.0 when k <= 0 or n == 0.
+/// Returns 0.0 when k <= 0, n == 0, or k > n (cannot evaluate that many).
 double passCaretK(List<bool> trialPasses, int k) {
   final n = trialPasses.length;
   if (k <= 0 || n == 0) return 0.0;
+  if (k > n) return 0.0;
   final c = trialPasses.where((p) => p).length;
   if (c == 0) return 0.0;
   // (c/n)^k
