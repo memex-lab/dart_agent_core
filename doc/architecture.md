@@ -1,5 +1,7 @@
 # Architecture & Lifecycle
 
+[English](architecture.md) | [简体中文](architecture.zh-CN.md)
+
 ## The `StatefulAgent`
 
 `StatefulAgent` manages an `AgentState` and runs an autonomous "think-act-observe" loop. Every call to `run()` or `runStream()` starts the loop with the current state and continues until a stop condition is met.
