@@ -887,6 +887,9 @@ Anthropic recommends targeting **pass@1 close to 100% and as large a
 k as possible for pass^k** — the latter measures sustained
 reliability.
 
+When `k` exceeds the observed trial count `n`, Markdown reports show
+`pass@k` as `N/A` and mark `pass^k` as a low-confidence empirical estimate.
+
 ```dart
 final passAt = report.passAtKByTask(ks: [1, 3, 5]);
 final passCk = report.passCaretKByTask(ks: [1, 3, 5]);
