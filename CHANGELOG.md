@@ -1,3 +1,8 @@
+## 2.1.5
+
+- Keep `deactivate_skills` from throwing when `AgentState.activeSkills` is still null.
+- Skip unknown names in `activeSkills` while composing tools, so a stale persisted skill cannot crash the run.
+
 ## 2.1.4
 
 - Fix Gemini tool-result history by sending `functionResponse` parts with the supported `user` role, restoring function-calling compatibility with Gemini 3.6 while retaining compatibility with earlier models.

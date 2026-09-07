@@ -257,6 +257,7 @@ String _activateSkills(List<String> skillNames) {
 
 String _deactivateSkills(List<String> skillNames) {
   final state = AgentCallToolContext.current!.state;
+  state.activeSkills ??= [];
   final skills = AgentCallToolContext.current!.agent.skills ?? [];
   final forceActiveSkillNames = skills
       .where((s) => s.forceActivate)

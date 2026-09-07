@@ -626,7 +626,17 @@ class StatefulAgent {
         ...forceActiveSkillNames,
       }).toList();
       for (var skillName in activeSkillNames) {
-        final skill = skills!.firstWhere((s) => s.name == skillName);
+        Skill? skill;
+        for (final candidate in skills!) {
+          if (candidate.name == skillName) {
+            skill = candidate;
+            break;
+          }
+        }
+        if (skill == null) {
+          _logger.warning('[$name] Ignoring unknown active skill "$skillName"');
+          continue;
+        }
         toolsCopy.addAll(skill.tools ?? []);
       }
     }
