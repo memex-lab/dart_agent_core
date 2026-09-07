@@ -54,7 +54,7 @@ Available via `AgentCallToolContext.current`:
 `FileStateStorage` persists `AgentState` as a JSON file on disk. Each session maps to one file named `$sessionId.json` inside the given directory.
 
 ```dart
-final storage = FileStateStorage(Directory('.state_dir'));
+final storage = FileStateStorage('.state_dir');
 
 // Load existing state, or create a new one with initial metadata
 final state = await storage.loadOrCreate('session_123', {

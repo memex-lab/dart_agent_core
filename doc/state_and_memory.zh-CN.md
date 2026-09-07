@@ -54,7 +54,7 @@ String checkBalance(String currency) {
 `FileStateStorage` 把 `AgentState` 以 JSON 文件持久化到磁盘。每个会话对应给定目录下的一个 `$sessionId.json` 文件。
 
 ```dart
-final storage = FileStateStorage(Directory('.state_dir'));
+final storage = FileStateStorage('.state_dir');
 
 // 加载已有状态，或使用初始 metadata 创建新状态
 final state = await storage.loadOrCreate('session_123', {
