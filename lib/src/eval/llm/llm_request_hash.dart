@@ -35,12 +35,13 @@ abstract class LLMRequestHash {
     required List<Tool>? tools,
     required ModelConfig modelConfig,
     bool? jsonOutput,
+    ToolChoice? toolChoice,
     String? trialSalt,
   });
 }
 
 /// Default SHA-256 based implementation. Hashes the JSON-encoded
-/// `(messages, tools, modelConfig, jsonOutput, trialSalt)` tuple.
+/// `(messages, tools, modelConfig, jsonOutput, toolChoice, trialSalt)` tuple.
 /// `Tool.executable` closures are ignored (they're not in toJson).
 ///
 /// **Default-stripped keys**: `timestamp` is always stripped from
@@ -68,6 +69,7 @@ class Sha256LLMRequestHash implements LLMRequestHash {
     required List<Tool>? tools,
     required ModelConfig modelConfig,
     bool? jsonOutput,
+    ToolChoice? toolChoice,
     String? trialSalt,
   }) {
     final payload = {
@@ -75,6 +77,7 @@ class Sha256LLMRequestHash implements LLMRequestHash {
       'tools': tools?.map((t) => t.toJson()).toList(),
       'model': modelConfig.toJson(),
       'jsonOutput': ?jsonOutput,
+      'toolChoice': ?toolChoice?.toJson(),
       'trialSalt': ?trialSalt,
     };
     final encoded = utf8.encode(_canonicalJson(payload));

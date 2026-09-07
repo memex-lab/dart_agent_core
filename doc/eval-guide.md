@@ -965,7 +965,7 @@ final replay = ReplayLLMClient(
 
 Request hashing is done by `Sha256LLMRequestHash` (default):
 
-- Includes `messages` / `tools` / `modelConfig` / `jsonOutput` / `trialSalt`
+- Includes `messages` / `tools` / `modelConfig` / `jsonOutput` / `toolChoice` / `trialSalt`
 - Use `stripMessageKeys` to ignore volatile fields (`timestamp`, etc.)
 - Changing the prompt or tools → hash changes → cache misses → CI surfaces it as a re-record signal
 

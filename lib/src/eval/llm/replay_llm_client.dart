@@ -84,6 +84,7 @@ class ReplayLLMClient implements LLMClient {
       tools: tools,
       modelConfig: modelConfig,
       jsonOutput: jsonOutput,
+      toolChoice: toolChoice,
       trialSalt: trialSalt,
     );
     final cached = await store.get(hash);

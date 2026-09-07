@@ -905,7 +905,7 @@ final replay = ReplayLLMClient(
 
 请求 hash 由 `Sha256LLMRequestHash` 计算（默认）：
 
-- 包含 `messages` / `tools` / `modelConfig` / `jsonOutput` / `trialSalt`
+- 包含 `messages` / `tools` / `modelConfig` / `jsonOutput` / `toolChoice` / `trialSalt`
 - 可通过 `stripMessageKeys` 跳过易变字段（`timestamp` 等）
 - prompt 或 tools 改了 → hash 变 → 缓存自动失效，CI 报错提示 re-record
 
