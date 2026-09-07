@@ -153,11 +153,90 @@ void main() {
       expect(result.isLoop, isFalse);
       expect(client.generateCount, 0);
     });
+
+    test('LLM 诊断在 confidence > 0.8 时判定为环路', () async {
+      final state = AgentState.empty()..totalLoopCount = 5;
+      final client = _CountingLLMClient(
+        textOutput: '{"is_loop":true,"confidence":0.91,"reason":"stuck"}',
+      );
+      final detector = DefaultLoopDetector(
+        state: state,
+        client: client,
+        modelConfig: ModelConfig(model: 'test-model'),
+        llmCheckAfterTurns: 1,
+        llmCheckInterval: 1,
+      );
+
+      final result = await detector.detect(
+        ModelMessage(
+          model: 'test-model',
+          textOutput: 'still going',
+          stopReason: 'stop',
+        ),
+      );
+
+      expect(result.isLoop, isTrue);
+      expect(result.message, contains('stuck'));
+      expect(client.generateCount, 1);
+    });
+
+    test('LLM 诊断在 confidence <= 0.8 时忽略', () async {
+      final state = AgentState.empty()..totalLoopCount = 5;
+      final client = _CountingLLMClient(
+        textOutput: '{"is_loop":true,"confidence":0.8,"reason":"maybe"}',
+      );
+      final detector = DefaultLoopDetector(
+        state: state,
+        client: client,
+        modelConfig: ModelConfig(model: 'test-model'),
+        llmCheckAfterTurns: 1,
+        llmCheckInterval: 1,
+      );
+
+      final result = await detector.detect(
+        ModelMessage(
+          model: 'test-model',
+          textOutput: 'still going',
+          stopReason: 'stop',
+        ),
+      );
+
+      expect(result.isLoop, isFalse);
+      expect(client.generateCount, 1);
+    });
+
+    test('LLM 诊断 JSON 无法解析时不抛出', () async {
+      final state = AgentState.empty()..totalLoopCount = 5;
+      final client = _CountingLLMClient(textOutput: 'not json');
+      final detector = DefaultLoopDetector(
+        state: state,
+        client: client,
+        modelConfig: ModelConfig(model: 'test-model'),
+        llmCheckAfterTurns: 1,
+        llmCheckInterval: 1,
+      );
+
+      final result = await detector.detect(
+        ModelMessage(
+          model: 'test-model',
+          textOutput: 'still going',
+          stopReason: 'stop',
+        ),
+      );
+
+      expect(result.isLoop, isFalse);
+      expect(client.generateCount, 1);
+    });
   });
 }
 
 class _CountingLLMClient extends LLMClient {
   int generateCount = 0;
+  final String textOutput;
+
+  _CountingLLMClient({
+    this.textOutput = '{"is_loop":false,"reason":"ok","confidence":0}',
+  });
 
   @override
   Future<ModelMessage> generate(
@@ -171,7 +250,7 @@ class _CountingLLMClient extends LLMClient {
     generateCount += 1;
     return ModelMessage(
       model: modelConfig.model,
-      textOutput: '{"is_loop":false,"reason":"ok","confidence":0}',
+      textOutput: textOutput,
       stopReason: 'stop',
     );
   }
