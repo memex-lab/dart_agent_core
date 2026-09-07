@@ -1,5 +1,7 @@
 # dart_agent_core Eval Guide
 
+[English](eval-guide.md) | [简体中文](eval-guide.zh-CN.md)
+
 > A practical guide to evaluating Dart agents.
 
 `dart_agent_core` ships a built-in evaluation subsystem aligned with
@@ -887,6 +889,9 @@ Anthropic recommends targeting **pass@1 close to 100% and as large a
 k as possible for pass^k** — the latter measures sustained
 reliability.
 
+When `k` exceeds the observed trial count `n`, Markdown reports show
+`pass@k` as `N/A` and mark `pass^k` as a low-confidence empirical estimate.
+
 ```dart
 final passAt = report.passAtKByTask(ks: [1, 3, 5]);
 final passCk = report.passCaretKByTask(ks: [1, 3, 5]);
@@ -962,7 +967,7 @@ final replay = ReplayLLMClient(
 
 Request hashing is done by `Sha256LLMRequestHash` (default):
 
-- Includes `messages` / `tools` / `modelConfig` / `jsonOutput` / `trialSalt`
+- Includes `messages` / `tools` / `modelConfig` / `jsonOutput` / `toolChoice` / `trialSalt`
 - Use `stripMessageKeys` to ignore volatile fields (`timestamp`, etc.)
 - Changing the prompt or tools → hash changes → cache misses → CI surfaces it as a re-record signal
 

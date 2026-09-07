@@ -75,6 +75,10 @@ void main() {
       expect(passCaretK([true], 0), 0.0);
       expect(passCaretK(<bool>[], 1), 0.0);
     });
+
+    test('k > n remains a valid empirical estimate', () {
+      expect(passCaretK([true, false], 5), closeTo(0.03125, 1e-9));
+    });
   });
 
   group('ClassificationMetrics', () {

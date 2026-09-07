@@ -1,5 +1,7 @@
 # State & Memory Management
 
+[English](state_and_memory.md) | [简体中文](state_and_memory.zh-CN.md)
+
 ## `AgentState`
 
 `AgentState` is the serializable snapshot of everything that happened during an agent's lifetime. It lives on the `StatefulAgent` and is updated after every turn.
@@ -52,7 +54,7 @@ Available via `AgentCallToolContext.current`:
 `FileStateStorage` persists `AgentState` as a JSON file on disk. Each session maps to one file named `$sessionId.json` inside the given directory.
 
 ```dart
-final storage = FileStateStorage(Directory('.state_dir'));
+final storage = FileStateStorage('.state_dir');
 
 // Load existing state, or create a new one with initial metadata
 final state = await storage.loadOrCreate('session_123', {

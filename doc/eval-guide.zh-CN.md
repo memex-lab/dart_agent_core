@@ -1,5 +1,7 @@
 # dart_agent_core Eval Guide
 
+[English](eval-guide.md) | [简体中文](eval-guide.zh-CN.md)
+
 > 给 Dart Agent 加评估的实操指南。
 
 `dart_agent_core` 内置了一套基于 [Anthropic "Demystifying evals for AI
@@ -830,6 +832,9 @@ class Outcome {
 `pass^k = (c/n)^k`。"k 次尝试全部成功"的概率。Anthropic 推荐
 **pass@1 接近 100%、pass^k 的 k 越大越好**（连续稳定通过的能力）。
 
+当 `k` 大于实际 trial 数 `n` 时，Markdown 报告会将 `pass@k` 显示为
+`N/A`，并把 `pass^k` 标记为低置信度的经验估计。
+
 ```dart
 final passAt = report.passAtKByTask(ks: [1, 3, 5]);
 final passCk = report.passCaretKByTask(ks: [1, 3, 5]);
@@ -902,7 +907,7 @@ final replay = ReplayLLMClient(
 
 请求 hash 由 `Sha256LLMRequestHash` 计算（默认）：
 
-- 包含 `messages` / `tools` / `modelConfig` / `jsonOutput` / `trialSalt`
+- 包含 `messages` / `tools` / `modelConfig` / `jsonOutput` / `toolChoice` / `trialSalt`
 - 可通过 `stripMessageKeys` 跳过易变字段（`timestamp` 等）
 - prompt 或 tools 改了 → hash 变 → 缓存自动失效，CI 报错提示 re-record
 

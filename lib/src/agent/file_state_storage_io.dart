@@ -18,7 +18,21 @@ class FileStateStorage implements StateStorage {
   Directory get _directory => Directory(directoryPath);
 
   File _getFile(String sessionId) {
+    _assertSafeSessionId(sessionId);
     return File('$directoryPath/$sessionId.json');
+  }
+
+  static void _assertSafeSessionId(String sessionId) {
+    if (sessionId.isEmpty ||
+        sessionId.contains('/') ||
+        sessionId.contains(r'\') ||
+        sessionId.contains('..')) {
+      throw ArgumentError.value(
+        sessionId,
+        'sessionId',
+        'must be a single path segment',
+      );
+    }
   }
 
   @override

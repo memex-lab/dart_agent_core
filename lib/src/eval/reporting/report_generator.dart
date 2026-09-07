@@ -42,6 +42,7 @@ String generateMarkdownReport(
   final passAtK = report.passAtKByTask(ks: ksToReport);
   final passCK = report.passCaretKByTask(ks: ksToReport);
   if (passAtK.isNotEmpty && ksToReport.isNotEmpty) {
+    var hasInsufficientSamples = false;
     b.writeln('## pass@k / pass^k by task');
     b.writeln();
     final headers = [
@@ -51,16 +52,26 @@ String generateMarkdownReport(
     b.writeln('| ${headers.join(' | ')} |');
     b.writeln('|${'---|' * headers.length}');
     for (final taskId in passAtK.keys) {
+      final trialCount = byTask[taskId]?.length ?? 0;
       final cells = <String>[
         '`$taskId`',
         for (final k in ksToReport) ...[
-          _pct(passAtK[taskId]?[k] ?? 0),
-          _pct(passCK[taskId]?[k] ?? 0),
+          if (k > trialCount) 'N/A' else _pct(passAtK[taskId]?[k] ?? 0),
+          '${_pct(passCK[taskId]?[k] ?? 0)}${k > trialCount ? ' ⚠️' : ''}',
         ],
       ];
+      hasInsufficientSamples |= ksToReport.any((k) => k > trialCount);
       b.writeln('| ${cells.join(' | ')} |');
     }
     b.writeln();
+    if (hasInsufficientSamples) {
+      b.writeln(
+        '> ⚠️ When `k` exceeds the observed trial count `n`, `pass@k` is '
+        'not available. `pass^k` remains an empirical estimate but is marked '
+        'as low confidence.',
+      );
+      b.writeln();
+    }
   }
 
   // Bucket pass rates

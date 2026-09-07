@@ -342,6 +342,36 @@ void main() {
       expect(passCk['b']![2], 1.0);
     });
 
+    test('markdown marks metrics with insufficient samples', () {
+      final report = EvalRunReport(
+        runName: 'r',
+        suite: suiteOf(SuiteKind.mixed),
+        trials: [
+          makeTrialResult(
+            runName: 'r',
+            suiteName: 's',
+            taskId: 'a',
+            trialIndex: 0,
+            scores: [okScore('noop')],
+          ),
+          makeTrialResult(
+            runName: 'r',
+            suiteName: 's',
+            taskId: 'a',
+            trialIndex: 1,
+            scores: [failScore('noop')],
+          ),
+        ],
+        startedAt: DateTime(2025),
+        endedAt: DateTime(2025),
+      );
+
+      final markdown = generateMarkdownReport(report, ksToReport: const [5]);
+
+      expect(markdown, contains('| `a` | N/A | 3.1% ⚠️ |'));
+      expect(markdown, contains('`pass^k` remains an empirical estimate'));
+    });
+
     test('bucketPassRates groups by failure_bucket', () {
       final report = EvalRunReport(
         runName: 'r',

@@ -1,5 +1,7 @@
 # Tools & Planning
 
+[English](tools_and_planning.md) | [简体中文](tools_and_planning.zh-CN.md)
+
 ## Creating Tools
 
 A `Tool` wraps any Dart function and exposes it to the LLM via a JSON Schema definition. The agent parses the LLM's function call, maps the JSON arguments to Dart function parameters, executes the function, and feeds the result back into the conversation.

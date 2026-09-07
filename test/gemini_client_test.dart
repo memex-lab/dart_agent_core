@@ -106,6 +106,57 @@ void main() {
       expect(functionResponse['name'], 'Glob');
       expect(functionResponse['response'], {'content': '["lib/main.dart"]'});
     });
+
+    test(
+      'required toolChoice wraps mode under functionCallingConfig',
+      () async {
+        final adapter = _CaptureAdapter([
+          (_) => _jsonResponse({
+            'candidates': [
+              {
+                'content': {
+                  'parts': [
+                    {'text': 'ok'},
+                  ],
+                },
+                'finishReason': 'STOP',
+              },
+            ],
+          }),
+        ]);
+        final client = GeminiClient(
+          apiKey: 'test-key',
+          client: Dio()..httpClientAdapter = adapter,
+        );
+
+        await client.generate(
+          [UserMessage.text('use a tool')],
+          tools: [
+            Tool(
+              name: 'Glob',
+              description: 'Find files',
+              parameters: const {
+                'type': 'object',
+                'properties': <String, dynamic>{},
+              },
+            ),
+          ],
+          toolChoice: ToolChoice(
+            mode: ToolChoiceMode.required,
+            allowedFunctionNames: const ['Glob'],
+          ),
+          modelConfig: ModelConfig(model: 'gemini-test'),
+        );
+
+        final body = adapter.bodies.single as Map<String, dynamic>;
+        expect(body['toolConfig'], {
+          'functionCallingConfig': {
+            'mode': 'ANY',
+            'allowedFunctionNames': ['Glob'],
+          },
+        });
+      },
+    );
   });
 }
 

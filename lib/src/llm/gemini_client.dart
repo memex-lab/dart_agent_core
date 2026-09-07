@@ -506,7 +506,7 @@ Map<String, dynamic> _createRequestBody(
         if (toolChoice?.allowedFunctionNames != null) {
           toolConfig['allowedFunctionNames'] = toolChoice!.allowedFunctionNames;
         }
-        body['toolConfig'] = toolConfig;
+        body['toolConfig'] = {'functionCallingConfig': toolConfig};
         break;
       case null:
         // Do nothing

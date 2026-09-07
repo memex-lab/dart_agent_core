@@ -1,5 +1,7 @@
 # Model Context Protocol (MCP)
 
+[English](mcp.md) | [简体中文](mcp.zh-CN.md)
+
 `dart_agent_core` can connect a `StatefulAgent` to one or more MCP servers. MCP capabilities are exposed through a small, fixed bridge instead of registering every remote tool directly with the LLM.
 
 ## How it works

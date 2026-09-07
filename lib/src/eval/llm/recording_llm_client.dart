@@ -75,6 +75,7 @@ class RecordingLLMClient implements LLMClient {
       tools: tools,
       modelConfig: modelConfig,
       jsonOutput: jsonOutput,
+      toolChoice: toolChoice,
       trialSalt: trialSalt,
     );
     try {
