@@ -48,6 +48,86 @@ class _NoopGrader extends CodeGrader {
 }
 
 void main() {
+  for (final kind in SuiteKind.values) {
+    for (final status in TrialStatus.values) {
+      test('partial credit respects $status in $kind suites', () {
+        final report = EvalRunReport(
+          runName: 'r',
+          suite: EvalSuite(
+            name: 's',
+            agentName: 'a',
+            kind: kind,
+            taskPassThreshold: 0.8,
+            tasks: [_StubTask(id: 't')],
+          ),
+          trials: [
+            makeTrialResult(
+              runName: 'r',
+              suiteName: 's',
+              taskId: 't',
+              status: status,
+              scores: [Score(graderName: 'g', value: 0.9, passed: false)],
+            ),
+          ],
+          startedAt: DateTime(2025),
+          endedAt: DateTime(2025),
+        );
+        final completed =
+            status == TrialStatus.passed || status == TrialStatus.failed;
+        expect(report.taskPassRate, completed ? 1.0 : 0.0);
+      });
+    }
+  }
+
+  test('partial credit requires a numeric score even at threshold zero', () {
+    final report = EvalRunReport(
+      runName: 'r',
+      suite: EvalSuite(
+        name: 's',
+        agentName: 'a',
+        kind: SuiteKind.capability,
+        taskPassThreshold: 0,
+        tasks: [_StubTask(id: 't')],
+      ),
+      trials: [
+        makeTrialResult(
+          runName: 'r',
+          suiteName: 's',
+          taskId: 't',
+          scores: [nullScore('g')],
+        ),
+      ],
+      startedAt: DateTime(2025),
+      endedAt: DateTime(2025),
+    );
+    expect(report.taskPassRate, 0);
+  });
+
+  test('taskPassThreshold rejects out-of-range and non-finite values', () {
+    for (final threshold in [-0.1, 1.1, double.nan, double.infinity]) {
+      final suite = EvalSuite(
+        name: 's',
+        agentName: 'a',
+        kind: SuiteKind.mixed,
+        tasks: [],
+        taskPassThreshold: threshold,
+      );
+      expect(suite.validate(), contains(contains('taskPassThreshold')));
+    }
+    for (final threshold in [0.0, 0.8, 1.0]) {
+      expect(
+        EvalSuite(
+          name: 's',
+          agentName: 'a',
+          kind: SuiteKind.mixed,
+          tasks: [],
+          taskPassThreshold: threshold,
+        ).validate(),
+        isEmpty,
+      );
+    }
+  });
+
   group('EvalSuite.validate', () {
     test('detects duplicate task ids', () {
       final suite = EvalSuite(
@@ -312,6 +392,93 @@ void main() {
         expect(report.taskPassRate, 0.5);
       },
     );
+
+    test('taskPassRate honors taskPassThreshold for partial-credit means', () {
+      EvalSuite suiteWithThreshold(double threshold) => EvalSuite(
+        name: 's',
+        agentName: 'agent_x',
+        kind: SuiteKind.mixed,
+        taskPassThreshold: threshold,
+        tasks: [
+          _StubTask(id: 'a', graders: [_NoopGrader()]),
+          _StubTask(id: 'b', graders: [_NoopGrader()]),
+        ],
+      );
+
+      // Partial means: task a mean 0.85 (>= 0.8) passes; task b mean 0.5 fails.
+      final partial = EvalRunReport(
+        runName: 'r',
+        suite: suiteWithThreshold(0.8),
+        trials: [
+          makeTrialResult(
+            runName: 'r',
+            suiteName: 's',
+            taskId: 'a',
+            trialIndex: 0,
+            scores: [
+              // Mean 0.85; graders themselves report failed on the 0.7.
+              Score(graderName: 'g1', value: 1.0, passed: true),
+              Score(
+                graderName: 'g2',
+                value: 0.7,
+                passed: false,
+                rationale: 'partial',
+              ),
+            ],
+          ),
+          makeTrialResult(
+            runName: 'r',
+            suiteName: 's',
+            taskId: 'b',
+            trialIndex: 0,
+            scores: [
+              Score(
+                graderName: 'g1',
+                value: 0.5,
+                passed: false,
+                rationale: 'low',
+              ),
+            ],
+          ),
+        ],
+        startedAt: DateTime(2025),
+        endedAt: DateTime(2025),
+      );
+      expect(partial.taskPassRate, 0.5);
+
+      // Threshold 1.0 stays all-or-nothing via allGradersPassed.
+      final binary = EvalRunReport(
+        runName: 'r',
+        suite: suiteWithThreshold(1.0),
+        trials: [
+          makeTrialResult(
+            runName: 'r',
+            suiteName: 's',
+            taskId: 'a',
+            trialIndex: 0,
+            scores: [
+              Score(graderName: 'g1', value: 1.0, passed: true),
+              Score(
+                graderName: 'g2',
+                value: 0.7,
+                passed: false,
+                rationale: 'partial',
+              ),
+            ],
+          ),
+          makeTrialResult(
+            runName: 'r',
+            suiteName: 's',
+            taskId: 'b',
+            trialIndex: 0,
+            scores: [okScore('noop')],
+          ),
+        ],
+        startedAt: DateTime(2025),
+        endedAt: DateTime(2025),
+      );
+      expect(binary.taskPassRate, 0.5);
+    });
 
     test('graderMeans excludes null scores from averages', () {
       final report = EvalRunReport(
