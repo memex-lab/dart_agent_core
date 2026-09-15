@@ -30,6 +30,101 @@ void main() {
     ]);
   }
 
+  test('MCP protocol errors retain isError through the agent loop', () async {
+    await connectEcho();
+    final client = _QueuedLLMClient([
+      ModelMessage(
+        model: 'fake-model',
+        stopReason: 'tool_calls',
+        functionCalls: [
+          for (final entry in {
+            'reported': ('mcp_call_tool', {'tool_name': 'fail'}),
+            'missing': ('mcp_call_tool', {'tool_name': 'missing'}),
+            'resource': ('mcp_read_resource', {'uri': 'test://missing'}),
+            'prompt': ('mcp_get_prompt', {'prompt_name': 'missing'}),
+            'success': ('mcp_call_tool', {'tool_name': 'error_text'}),
+          }.entries)
+            FunctionCall(
+              id: entry.key,
+              name: entry.value.$1,
+              arguments: jsonEncode({'server_name': 'echo', ...entry.value.$2}),
+            ),
+        ],
+      ),
+      ModelMessage(model: 'fake-model', textOutput: 'done', stopReason: 'stop'),
+    ]);
+    final agent = StatefulAgent(
+      name: 'mcp',
+      client: client,
+      modelConfig: ModelConfig(model: 'fake-model'),
+      state: AgentState.empty(),
+      mcpManager: manager,
+      withGeneralPrinciples: false,
+      disableSubAgents: true,
+    );
+    await agent.run([UserMessage.text('check errors')], useStream: false);
+    final results = agent.state.history.messages
+        .whereType<FunctionExecutionResultMessage>()
+        .single
+        .results;
+    expect(results, hasLength(5));
+    for (final result in results) {
+      expect(result.isError, result.id != 'success', reason: result.id);
+    }
+    expect(
+      (results.firstWhere((r) => r.id == 'reported').content.single as TextPart)
+          .text,
+      contains('request rejected'),
+    );
+    expect(
+      (results.firstWhere((r) => r.id == 'success').content.single as TextPart)
+          .text,
+      startsWith('Error:'),
+    );
+  });
+
+  test(
+    'all bridge tools mark missing and disconnected servers as errors',
+    () async {
+      await connectEcho();
+      final tools = manager.getBridgeTools();
+      await manager.getSession('echo')!.disconnect();
+      for (final serverName in ['missing', 'echo']) {
+        for (final tool in tools) {
+          final result = await tool.executable!({
+            'server_name': serverName,
+            'tool_name': 'echo',
+            'uri': 'test://notes',
+            'prompt_name': 'greet',
+          });
+          expect(result, isA<McpOperationResult>());
+          expect(tool.resultIsError!(result), isTrue, reason: tool.name);
+        }
+      }
+    },
+  );
+
+  test(
+    'legacy session methods keep text results while structured methods expose errors',
+    () async {
+      await connectEcho();
+      final session = manager.getSession('echo')!;
+      expect(await session.callTool('echo', {'message': 'hi'}), 'echo:hi');
+      expect(await session.readResource('test://notes'), 'resource-body');
+      expect(
+        await session.getPrompt('greet', {'name': 'Ada'}),
+        contains('Hello Ada'),
+      );
+      expect(
+        await session.callTool('fail', {}),
+        'MCP tool error: request rejected',
+      );
+      final result = await session.callToolResult('fail', {});
+      expect(result.isError, isTrue);
+      expect(result.text, 'MCP tool error: request rejected');
+    },
+  );
+
   test(
     'bridge tools list, call, read, and get prompt against a live server',
     () async {
@@ -56,33 +151,33 @@ void main() {
       final listed = await (byName['mcp_list_tools']!.executable as Function)({
         'server_name': 'echo',
       });
-      expect(listed, contains('echo'));
+      expect(listed.toString(), contains('echo'));
 
       final called = await (byName['mcp_call_tool']!.executable as Function)({
         'server_name': 'echo',
         'tool_name': 'echo',
         'arguments': {'message': 'hi'},
       });
-      expect(called, contains('echo:hi'));
+      expect(called.toString(), contains('echo:hi'));
 
       final resources =
           await (byName['mcp_list_resources']!.executable as Function)({
             'server_name': 'echo',
           });
-      expect(resources, contains('notes'));
+      expect(resources.toString(), contains('notes'));
 
       final read = await (byName['mcp_read_resource']!.executable as Function)({
         'server_name': 'echo',
         'uri': 'test://notes',
       });
-      expect(read, contains('resource-body'));
+      expect(read.toString(), contains('resource-body'));
 
       final prompt = await (byName['mcp_get_prompt']!.executable as Function)({
         'server_name': 'echo',
         'prompt_name': 'greet',
         'arguments': {'name': 'Ada'},
       });
-      expect(prompt, contains('Hello Ada'));
+      expect(prompt.toString(), contains('Hello Ada'));
     },
   );
 

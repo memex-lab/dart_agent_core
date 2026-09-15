@@ -92,6 +92,12 @@ Manager 存在已连接 Server 时，Agent 会注册以下工具：
 
 每次桥接调用都必须提供 `server_name`。能力发现会沿 MCP 分页读取所有页面；重复游标或异常长的分页序列会被拒绝，以避免无限循环。
 
+## 错误结果
+
+桥接工具的可执行函数返回 `McpOperationResult`，包含 `text` 和 `isError`。Agent 将文本保留在工具历史中，并通过状态标记失败。成功内容即使以 `Error:` 开头也不会被误判为错误。
+
+直接调用会话时，可用 `callToolResult()`、`readResourceResult()`、`getPromptResult()` 读取错误状态。原有的 `callTool()`、`readResource()`、`getPrompt()` 继续返回格式化文本。未连接的会话仍可能抛出 `StateError`，桥接层会将其标记为工具错误。
+
 ## 生命周期
 
 MCP 连接以单次 Agent run 为生命周期：

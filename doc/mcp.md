@@ -92,6 +92,12 @@ The agent registers these tools whenever the manager has connected servers:
 
 Every bridge call requires `server_name`. Discovery follows MCP pagination until all pages are collected; repeated cursors and excessively long pagination sequences are rejected to prevent infinite loops.
 
+## Error results
+
+Bridge executables return `McpOperationResult` with `text` and `isError`. The agent preserves the text in tool history and uses the status to mark failures. Successful content starting with `Error:` remains successful; error classification does not inspect text prefixes.
+
+For direct session calls, use `callToolResult()`, `readResourceResult()`, or `getPromptResult()` to inspect the status. Existing `callTool()`, `readResource()`, and `getPrompt()` continue to return formatted text. A call on a disconnected session can still throw `StateError`; the bridge marks that failure as a tool error.
+
 ## Lifecycle
 
 MCP connections are scoped to one agent run:

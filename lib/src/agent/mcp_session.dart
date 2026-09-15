@@ -4,6 +4,19 @@ import 'package:mcp_dart/mcp_dart.dart' as mcp;
 final _logger = Logger('McpSession');
 const _maxDiscoveryPages = 1000;
 
+/// Text returned by an MCP operation together with its actual error status.
+/// Error status is independent of the wording of successful server content.
+class McpOperationResult {
+  final String text;
+  final bool isError;
+
+  const McpOperationResult(this.text, {this.isError = false});
+  const McpOperationResult.error(this.text) : isError = true;
+
+  @override
+  String toString() => text;
+}
+
 /// Represents the connection state of an MCP server session.
 enum McpConnectionState { disconnected, connecting, connected, error }
 
@@ -311,8 +324,25 @@ class McpSession {
     throw StateError('MCP discovery exceeded $_maxDiscoveryPages pages');
   }
 
-  /// Call a specific tool on the MCP server.
+  /// Call a tool and return its formatted text (legacy convenience API).
+  /// Use [callToolResult] when the caller needs the error status.
   Future<dynamic> callTool(
+    String toolName,
+    Map<String, dynamic> arguments,
+  ) async => (await callToolResult(toolName, arguments)).text;
+
+  /// Read a resource as text. Use [readResourceResult] for the error status.
+  Future<String> readResource(String uri) async =>
+      (await readResourceResult(uri)).text;
+
+  /// Get a prompt as text. Use [getPromptResult] for the error status.
+  Future<String> getPrompt(
+    String promptName,
+    Map<String, String>? arguments,
+  ) async => (await getPromptResult(promptName, arguments)).text;
+
+  /// Call a specific tool on the MCP server.
+  Future<McpOperationResult> callToolResult(
     String toolName,
     Map<String, dynamic> arguments,
   ) async {
@@ -325,16 +355,18 @@ class McpSession {
       final result = await _client!.callTool(request);
       final content = _formatContent(result.content);
       if (result.isError == true) {
-        return 'MCP tool error: $content';
+        return McpOperationResult.error('MCP tool error: $content');
       }
-      return content;
+      return McpOperationResult(content);
     } catch (e) {
-      return 'Error calling MCP tool "$toolName" on [$serverName]: $e';
+      return McpOperationResult.error(
+        'Error calling MCP tool "$toolName" on [$serverName]: $e',
+      );
     }
   }
 
   /// Read a specific resource from the MCP server.
-  Future<String> readResource(String uri) async {
+  Future<McpOperationResult> readResourceResult(String uri) async {
     if (_client == null || _state != McpConnectionState.connected) {
       throw StateError('MCP session [$serverName] is not connected');
     }
@@ -354,14 +386,16 @@ class McpSession {
           buffer.writeln(c.toJson().toString());
         }
       }
-      return buffer.toString().trimRight();
+      return McpOperationResult(buffer.toString().trimRight());
     } catch (e) {
-      return 'Error reading MCP resource "$uri" on [$serverName]: $e';
+      return McpOperationResult.error(
+        'Error reading MCP resource "$uri" on [$serverName]: $e',
+      );
     }
   }
 
   /// Get a specific prompt from the MCP server.
-  Future<String> getPrompt(
+  Future<McpOperationResult> getPromptResult(
     String promptName,
     Map<String, String>? arguments,
   ) async {
@@ -380,9 +414,11 @@ class McpSession {
         buffer.write('[${msg.role.name}]: ');
         buffer.writeln(_formatSingleContent(msg.content));
       }
-      return buffer.toString().trimRight();
+      return McpOperationResult(buffer.toString().trimRight());
     } catch (e) {
-      return 'Error getting MCP prompt "$promptName" on [$serverName]: $e';
+      return McpOperationResult.error(
+        'Error getting MCP prompt "$promptName" on [$serverName]: $e',
+      );
     }
   }
 

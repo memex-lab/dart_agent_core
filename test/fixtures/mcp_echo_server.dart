@@ -26,6 +26,25 @@ Future<void> main() async {
     },
   );
 
+  server.registerTool(
+    'fail',
+    description: 'Returns a protocol tool error.',
+    inputSchema: JsonSchema.object(properties: {}),
+    callback: (args, extra) async => const CallToolResult(
+      content: [TextContent(text: 'request rejected')],
+      isError: true,
+    ),
+  );
+
+  server.registerTool(
+    'error_text',
+    description: 'Successful text containing an error prefix.',
+    inputSchema: JsonSchema.object(properties: {}),
+    callback: (args, extra) async => const CallToolResult(
+      content: [TextContent(text: 'Error: this is ordinary document content')],
+    ),
+  );
+
   server.registerResource('notes', 'test://notes', null, (uri, extra) async {
     return ReadResourceResult(
       contents: [
