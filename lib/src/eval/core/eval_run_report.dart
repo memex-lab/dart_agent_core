@@ -1,5 +1,6 @@
 import '../core/eval_suite.dart';
 import '../core/trial_result.dart';
+import '../core/trial.dart';
 import '../metrics/pass_at_k.dart';
 import '../metrics/pass_caret_k.dart';
 import '../suite_health/saturation_status.dart';
@@ -84,6 +85,17 @@ class EvalRunReport {
 
   /// Whether a single trial counts as passed for [taskPassRate].
   bool _trialPassesForTaskRate(TrialResult t) {
+    // Scores can exist on imported or manually constructed failed executions.
+    // Partial credit must respect the same execution boundary as binary grading.
+    switch (t.trial.status) {
+      case TrialStatus.errored:
+      case TrialStatus.timedOut:
+      case TrialStatus.skipped:
+        return false;
+      case TrialStatus.passed:
+      case TrialStatus.failed:
+        break;
+    }
     final threshold = suite.taskPassThreshold;
     // Default binary path preserves historical all-or-nothing semantics.
     if (threshold >= 1.0) return t.allGradersPassed;

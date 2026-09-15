@@ -48,6 +48,86 @@ class _NoopGrader extends CodeGrader {
 }
 
 void main() {
+  for (final kind in SuiteKind.values) {
+    for (final status in TrialStatus.values) {
+      test('partial credit respects $status in $kind suites', () {
+        final report = EvalRunReport(
+          runName: 'r',
+          suite: EvalSuite(
+            name: 's',
+            agentName: 'a',
+            kind: kind,
+            taskPassThreshold: 0.8,
+            tasks: [_StubTask(id: 't')],
+          ),
+          trials: [
+            makeTrialResult(
+              runName: 'r',
+              suiteName: 's',
+              taskId: 't',
+              status: status,
+              scores: [Score(graderName: 'g', value: 0.9, passed: false)],
+            ),
+          ],
+          startedAt: DateTime(2025),
+          endedAt: DateTime(2025),
+        );
+        final completed =
+            status == TrialStatus.passed || status == TrialStatus.failed;
+        expect(report.taskPassRate, completed ? 1.0 : 0.0);
+      });
+    }
+  }
+
+  test('partial credit requires a numeric score even at threshold zero', () {
+    final report = EvalRunReport(
+      runName: 'r',
+      suite: EvalSuite(
+        name: 's',
+        agentName: 'a',
+        kind: SuiteKind.capability,
+        taskPassThreshold: 0,
+        tasks: [_StubTask(id: 't')],
+      ),
+      trials: [
+        makeTrialResult(
+          runName: 'r',
+          suiteName: 's',
+          taskId: 't',
+          scores: [nullScore('g')],
+        ),
+      ],
+      startedAt: DateTime(2025),
+      endedAt: DateTime(2025),
+    );
+    expect(report.taskPassRate, 0);
+  });
+
+  test('taskPassThreshold rejects out-of-range and non-finite values', () {
+    for (final threshold in [-0.1, 1.1, double.nan, double.infinity]) {
+      final suite = EvalSuite(
+        name: 's',
+        agentName: 'a',
+        kind: SuiteKind.mixed,
+        tasks: [],
+        taskPassThreshold: threshold,
+      );
+      expect(suite.validate(), contains(contains('taskPassThreshold')));
+    }
+    for (final threshold in [0.0, 0.8, 1.0]) {
+      expect(
+        EvalSuite(
+          name: 's',
+          agentName: 'a',
+          kind: SuiteKind.mixed,
+          tasks: [],
+          taskPassThreshold: threshold,
+        ).validate(),
+        isEmpty,
+      );
+    }
+  });
+
   group('EvalSuite.validate', () {
     test('detects duplicate task ids', () {
       final suite = EvalSuite(

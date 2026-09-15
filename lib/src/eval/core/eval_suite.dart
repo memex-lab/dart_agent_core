@@ -36,10 +36,11 @@ class EvalSuite {
   /// recommended for capability suites.
   final bool requireReferenceSolution;
 
-  /// If a task's mean score across its non-null graders meets or exceeds
-  /// this threshold, the task is considered "passed" for this suite. The
-  /// default is 1.0 (binary). Lower values let suites accept partial
-  /// credit when grading multi-component tasks.
+  /// Threshold for the report's task pass rate, in the range 0.0 .. 1.0.
+  /// The default 1.0 preserves binary grader pass/fail decisions. Lower values
+  /// accept partial credit when a completed trial's mean non-null score meets
+  /// the threshold. Errored, timed-out and skipped trials never pass.
+  /// Trial pass rate and pass@k / pass^k retain binary grader semantics.
   final double taskPassThreshold;
 
   const EvalSuite({
@@ -56,6 +57,11 @@ class EvalSuite {
   /// if valid).
   List<String> validate() {
     final problems = <String>[];
+    if (!taskPassThreshold.isFinite ||
+        taskPassThreshold < 0 ||
+        taskPassThreshold > 1) {
+      problems.add('taskPassThreshold must be finite and between 0.0 and 1.0');
+    }
     final seen = <String>{};
     for (final t in tasks) {
       if (!seen.add(t.id)) {
