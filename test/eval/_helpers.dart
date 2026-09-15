@@ -108,9 +108,8 @@ TrialResult makeTrialResult({
   TrialStatus? status,
   DateTime? startedAt,
 }) {
-  final passed = scores
-      .where((s) => s.passed != null)
-      .every((s) => s.passed == true);
+  // Mirror TrialResult.allGradersPassed / EvalRunner status.
+  final passed = TrialResult.scoresIndicatePass(scores);
   return TrialResult(
     trial: makeTrial(
       runName: runName,

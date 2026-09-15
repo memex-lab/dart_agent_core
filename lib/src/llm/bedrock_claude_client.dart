@@ -11,6 +11,7 @@ import '../core/http_util.dart';
 import '../core/llm_client.dart';
 import '../core/message.dart';
 import '../core/tool.dart';
+import 'llm_request_util.dart';
 
 class BedrockClaudeClient extends LLMClient {
   final Logger _logger = Logger('BedrockClaudeClient');
@@ -146,6 +147,7 @@ class BedrockClaudeClient extends LLMClient {
           'Bedrock API Error: ${response.statusCode} ${response.data}',
         );
       } on DioException catch (e) {
+        if (isLlmRequestCancelled(e)) rethrow;
         if (retryCount < maxRetries) {
           // Retry on network errors or timeouts
           await _waitForRetry(retryCount, 'DioException: ${e.message}');
@@ -293,6 +295,7 @@ class BedrockClaudeClient extends LLMClient {
         );
       } catch (e) {
         if (e is DioException) {
+          if (isLlmRequestCancelled(e)) rethrow;
           if (retryCount < maxRetries) {
             await _waitForRetry(retryCount, 'DioException: ${e.message}');
             retryCount++;
@@ -422,7 +425,10 @@ class BedrockClaudeClient extends LLMClient {
       }).toList();
 
       if (toolChoice != null) {
-        if (toolChoice.mode == ToolChoiceMode.auto) {
+        if (toolChoice.mode == ToolChoiceMode.none) {
+          // Same as the Anthropic client: type none is required to disable tools.
+          body['tool_choice'] = {'type': 'none'};
+        } else if (toolChoice.mode == ToolChoiceMode.auto) {
           body['tool_choice'] = {'type': 'auto'};
         } else if (toolChoice.mode == ToolChoiceMode.required) {
           if (toolChoice.allowedFunctionNames != null &&

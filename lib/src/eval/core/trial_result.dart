@@ -24,6 +24,7 @@ class TrialResult {
   /// [TrialStatus.errored], [TrialStatus.timedOut], and [TrialStatus.skipped]
   /// never count as passes, even if graders would accept a placeholder outcome.
   /// Null-valued scores (e.g. judge returned Unknown) are ignored.
+  /// Returns false when no grader decided (all scores null / empty list).
   bool get allGradersPassed {
     switch (trial.status) {
       case TrialStatus.errored:
@@ -34,9 +35,15 @@ class TrialResult {
       case TrialStatus.failed:
         break;
     }
-    final passing = scores.where((s) => s.passed != null);
-    if (passing.isEmpty) return false;
-    return passing.every((s) => s.passed == true);
+    return scoresIndicatePass(scores);
+  }
+
+  /// Whether the scores alone indicate a pass, independent of trial status.
+  /// Ignores `passed == null`; no decided scores means not passed.
+  static bool scoresIndicatePass(Iterable<Score> scores) {
+    final decided = scores.where((s) => s.passed != null);
+    if (decided.isEmpty) return false;
+    return decided.every((s) => s.passed == true);
   }
 
   /// Mean of non-null score values. Returns null if all scores are null.

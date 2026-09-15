@@ -106,6 +106,28 @@ class _ExpectsValueGrader extends CodeGrader {
   }
 }
 
+/// Grader that never decides (e.g. LLM judge returned Unknown).
+class _NullScoreGrader implements Grader {
+  @override
+  String get name => 'undecided';
+
+  @override
+  GraderKind get kind => GraderKind.model;
+
+  @override
+  double get passThreshold => 1.0;
+
+  @override
+  Future<Score> grade({
+    required Trial trial,
+    required Transcript transcript,
+    required Outcome outcome,
+    required EvalContext context,
+    ReferenceSolution? referenceSolution,
+  }) async =>
+      Score(graderName: name, value: null, passed: null, rationale: 'Unknown');
+}
+
 class _Task implements EvalTask {
   @override
   final String id;
@@ -288,6 +310,39 @@ void main() {
       // recordingStore.flush() was awaited inside runSuite (no exception).
       await recordingStore.flush();
     });
+
+    test(
+      'only passed:null grader scores → trial status is not passed',
+      () async {
+        final suite = EvalSuite(
+          name: 's',
+          agentName: 'agent_x',
+          kind: SuiteKind.mixed,
+          tasks: [
+            _Task(
+              id: 'undecided',
+              input: {'outcome_value': 1},
+              graders: [_NullScoreGrader()],
+            ),
+          ],
+        );
+        final runner = EvalRunner(
+          environment: _StubEnvironment(),
+          harnessFactory: _StubHarnessFactory(),
+        );
+        final report = await runner.runSuite(
+          runName: 'null_scores_run',
+          suite: suite,
+          concurrency: 1,
+        );
+        final tr = report.trials.single;
+        expect(tr.scores, hasLength(1));
+        expect(tr.scores.single.passed, isNull);
+        expect(tr.allGradersPassed, isFalse);
+        expect(tr.trial.status, isNot(TrialStatus.passed));
+        expect(tr.trial.status, TrialStatus.failed);
+      },
+    );
 
     test('per-task timeout marks the trial timedOut', () async {
       final suite = EvalSuite(
