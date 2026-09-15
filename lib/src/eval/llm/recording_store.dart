@@ -62,6 +62,10 @@ class FileRecordingStore implements RecordingStore {
   /// the same future to serialize disk writes.
   Future<void>? _inflightFlush;
 
+  /// Invoked before each disk write. Tests set this to pause an in-flight
+  /// flush and interleave concurrent [put]s.
+  Future<void> Function()? beforeWrite;
+
   FileRecordingStore(this.rootDir) {
     if (!rootDir.existsSync()) {
       rootDir.createSync(recursive: true);
@@ -106,15 +110,24 @@ class FileRecordingStore implements RecordingStore {
         await _doFlush();
       } finally {
         _inflightFlush = null;
+        // Puts that arrived while this flush was in flight were added to
+        // _pendingWrites but could not schedule ( _inflightFlush was set ).
+        // Reschedule so they are not stranded after we clear the flag.
+        if (_pendingWrites.isNotEmpty) {
+          _scheduleFlush();
+        }
       }
     });
   }
 
   Future<void> _doFlush() async {
+    // Snapshot then clear so puts during the write land in the next flush.
     final batch = Map<String, ModelMessage>.from(_pendingWrites);
     if (batch.isEmpty) return;
     _pendingWrites.clear();
     for (final entry in batch.entries) {
+      final hook = beforeWrite;
+      if (hook != null) await hook();
       final f = _fileFor(entry.key);
       await f.parent.create(recursive: true);
       await f.writeAsString(jsonEncode(entry.value.toJson()));
