@@ -291,36 +291,40 @@ extension on EvalRunner {
         );
     outcome ??= const Outcome(environmentState: {});
 
-    // Run graders. Each grader returns a Score; runner does not enforce
-    // pass/fail above the grader's own threshold.
+    // Run graders only for completed trials. Timeout/error leave placeholder
+    // outcomes that can spuriously pass weak graders; those must not count as
+    // metric passes (see TrialResult.allGradersPassed).
     final scores = <Score>[];
-    for (final grader in task.graders) {
-      try {
-        final score = await grader.grade(
-          trial: trial,
-          transcript: effectiveTranscript,
-          outcome: outcome,
-          context: context,
-          referenceSolution: task.referenceSolution,
-        );
-        scores.add(score);
-      } catch (e, st) {
-        _logger.warning('grader ${grader.name} threw', e, st);
-        scores.add(
-          Score(
-            graderName: grader.name,
-            value: null,
-            passed: null,
-            rationale: 'grader exception: $e',
-          ),
-        );
+    final shouldGrade =
+        status == TrialStatus.passed || status == TrialStatus.failed;
+    if (shouldGrade) {
+      for (final grader in task.graders) {
+        try {
+          final score = await grader.grade(
+            trial: trial,
+            transcript: effectiveTranscript,
+            outcome: outcome,
+            context: context,
+            referenceSolution: task.referenceSolution,
+          );
+          scores.add(score);
+        } catch (e, st) {
+          _logger.warning('grader ${grader.name} threw', e, st);
+          scores.add(
+            Score(
+              graderName: grader.name,
+              value: null,
+              passed: null,
+              rationale: 'grader exception: $e',
+            ),
+          );
+        }
       }
-    }
 
-    // Final trial status reflects graders (same rules as
-    // [TrialResult.allGradersPassed]).
-    final passed = TrialResult.scoresIndicatePass(scores);
-    if (status == TrialStatus.passed && !passed) status = TrialStatus.failed;
+      // Final trial status reflects the same score rules as TrialResult.
+      final passed = TrialResult.scoresIndicatePass(scores);
+      if (status == TrialStatus.passed && !passed) status = TrialStatus.failed;
+    }
 
     trial = Trial(
       runName: trial.runName,

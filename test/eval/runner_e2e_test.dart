@@ -267,14 +267,14 @@ void main() {
       // Trials = 2 + 1 + 1 = 4. Two pos pass, one neg fails, one errored.
       expect(report.trials, hasLength(4));
 
-      // pos: 2 pass; neg: 0; errored: 0 (because trial.status=errored has
-      // no scores from harness — but graders still run, and check value==null
-      // which IS true after error → so errored task actually passes its grader.
-      // Verify by direct inspection:
+      // pos: 2 pass; neg: 0; errored must not count as a metric pass even if a
+      // grader would accept the placeholder empty outcome.
       final byTask = report.trialsByTask();
       expect(byTask['pos']!.every((t) => t.allGradersPassed), isTrue);
       expect(byTask['neg']!.every((t) => t.allGradersPassed), isFalse);
       expect(byTask['errored']!.first.trial.status, TrialStatus.errored);
+      expect(byTask['errored']!.first.allGradersPassed, isFalse);
+      expect(report.trialPassRate, 0.5); // 2 of 4
 
       // Composite exporter delivered all phases to the recording exporter.
       expect(
@@ -369,6 +369,10 @@ void main() {
       );
       expect(report.trials.first.trial.status, TrialStatus.timedOut);
       expect(report.trials.first.trial.failureReason, contains('timed out'));
+      // Grader would pass on empty placeholder outcome (expected: null), but a
+      // timeout must not count as a metric pass.
+      expect(report.trials.first.allGradersPassed, isFalse);
+      expect(report.trialPassRate, 0.0);
     });
 
     test(
