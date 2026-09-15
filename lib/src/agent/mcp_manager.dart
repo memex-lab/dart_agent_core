@@ -179,6 +179,7 @@ class McpManager {
       },
       parameterMode: ToolParameterMode.object,
       executable: _mcpListTools,
+      resultIsError: _mcpResultIsError,
     );
   }
 
@@ -210,6 +211,7 @@ class McpManager {
       },
       parameterMode: ToolParameterMode.object,
       executable: _mcpCallTool,
+      resultIsError: _mcpResultIsError,
     );
   }
 
@@ -231,6 +233,7 @@ class McpManager {
       },
       parameterMode: ToolParameterMode.object,
       executable: _mcpListResources,
+      resultIsError: _mcpResultIsError,
     );
   }
 
@@ -256,6 +259,7 @@ class McpManager {
       },
       parameterMode: ToolParameterMode.object,
       executable: _mcpReadResource,
+      resultIsError: _mcpResultIsError,
     );
   }
 
@@ -276,6 +280,7 @@ class McpManager {
       },
       parameterMode: ToolParameterMode.object,
       executable: _mcpListPrompts,
+      resultIsError: _mcpResultIsError,
     );
   }
 
@@ -306,26 +311,36 @@ class McpManager {
       },
       parameterMode: ToolParameterMode.object,
       executable: _mcpGetPrompt,
+      resultIsError: _mcpResultIsError,
     );
   }
 
   // --- Bridge tool executables ---
 
-  Future<String> _mcpListTools(Map<String, dynamic> args) async {
+  static bool _mcpResultIsError(dynamic r) =>
+      r is McpOperationResult && r.isError;
+
+  Future<McpOperationResult> _mcpListTools(Map<String, dynamic> args) async {
     final serverName = args['server_name'] as String;
     final session = _sessions[serverName];
     if (session == null) {
-      return 'Error: MCP server "$serverName" not found or not connected. Available servers: ${_sessions.keys.join(", ")}';
+      return McpOperationResult.error(
+        'Error: MCP server "$serverName" not found or not connected. Available servers: ${_sessions.keys.join(", ")}',
+      );
     }
     if (!session.isConnected) {
-      return 'Error: MCP server "$serverName" is not connected.';
+      return McpOperationResult.error(
+        'Error: MCP server "$serverName" is not connected.',
+      );
     }
 
     try {
       await session.refresh();
       final tools = session.tools;
       if (tools.isEmpty) {
-        return 'No tools available on MCP server "$serverName".';
+        return McpOperationResult(
+          'No tools available on MCP server "$serverName".',
+        );
       }
 
       final buffer = StringBuffer();
@@ -337,48 +352,63 @@ class McpManager {
           buffer.writeln('  Input Schema: ${jsonEncode(schema)}');
         }
       }
-      return buffer.toString();
+      return McpOperationResult(buffer.toString());
     } catch (e) {
-      return 'Error listing tools from "$serverName": $e';
+      return McpOperationResult.error(
+        'Error listing tools from "$serverName": $e',
+      );
     }
   }
 
-  Future<String> _mcpCallTool(Map<String, dynamic> args) async {
+  Future<McpOperationResult> _mcpCallTool(Map<String, dynamic> args) async {
     final serverName = args['server_name'] as String;
     final toolName = args['tool_name'] as String;
     final arguments = (args['arguments'] as Map<String, dynamic>?) ?? {};
 
     final session = _sessions[serverName];
     if (session == null) {
-      return 'Error: MCP server "$serverName" not found or not connected.';
+      return McpOperationResult.error(
+        'Error: MCP server "$serverName" not found or not connected.',
+      );
     }
     if (!session.isConnected) {
-      return 'Error: MCP server "$serverName" is not connected.';
+      return McpOperationResult.error(
+        'Error: MCP server "$serverName" is not connected.',
+      );
     }
 
     try {
-      final result = await session.callTool(toolName, arguments);
-      return result.toString();
+      return await session.callToolResult(toolName, arguments);
     } catch (e) {
-      return 'Error calling tool "$toolName" on "$serverName": $e';
+      return McpOperationResult.error(
+        'Error calling tool "$toolName" on "$serverName": $e',
+      );
     }
   }
 
-  Future<String> _mcpListResources(Map<String, dynamic> args) async {
+  Future<McpOperationResult> _mcpListResources(
+    Map<String, dynamic> args,
+  ) async {
     final serverName = args['server_name'] as String;
     final session = _sessions[serverName];
     if (session == null) {
-      return 'Error: MCP server "$serverName" not found or not connected.';
+      return McpOperationResult.error(
+        'Error: MCP server "$serverName" not found or not connected.',
+      );
     }
     if (!session.isConnected) {
-      return 'Error: MCP server "$serverName" is not connected.';
+      return McpOperationResult.error(
+        'Error: MCP server "$serverName" is not connected.',
+      );
     }
 
     try {
       await session.refresh();
       final resources = session.resources;
       if (resources.isEmpty) {
-        return 'No resources available on MCP server "$serverName".';
+        return McpOperationResult(
+          'No resources available on MCP server "$serverName".',
+        );
       }
 
       final buffer = StringBuffer();
@@ -393,46 +423,60 @@ class McpManager {
         }
         buffer.writeln();
       }
-      return buffer.toString();
+      return McpOperationResult(buffer.toString());
     } catch (e) {
-      return 'Error listing resources from "$serverName": $e';
+      return McpOperationResult.error(
+        'Error listing resources from "$serverName": $e',
+      );
     }
   }
 
-  Future<String> _mcpReadResource(Map<String, dynamic> args) async {
+  Future<McpOperationResult> _mcpReadResource(Map<String, dynamic> args) async {
     final serverName = args['server_name'] as String;
     final uri = args['uri'] as String;
 
     final session = _sessions[serverName];
     if (session == null) {
-      return 'Error: MCP server "$serverName" not found or not connected.';
+      return McpOperationResult.error(
+        'Error: MCP server "$serverName" not found or not connected.',
+      );
     }
     if (!session.isConnected) {
-      return 'Error: MCP server "$serverName" is not connected.';
+      return McpOperationResult.error(
+        'Error: MCP server "$serverName" is not connected.',
+      );
     }
 
     try {
-      return await session.readResource(uri);
+      return await session.readResourceResult(uri);
     } catch (e) {
-      return 'Error reading resource "$uri" from "$serverName": $e';
+      return McpOperationResult.error(
+        'Error reading resource "$uri" from "$serverName": $e',
+      );
     }
   }
 
-  Future<String> _mcpListPrompts(Map<String, dynamic> args) async {
+  Future<McpOperationResult> _mcpListPrompts(Map<String, dynamic> args) async {
     final serverName = args['server_name'] as String;
     final session = _sessions[serverName];
     if (session == null) {
-      return 'Error: MCP server "$serverName" not found or not connected.';
+      return McpOperationResult.error(
+        'Error: MCP server "$serverName" not found or not connected.',
+      );
     }
     if (!session.isConnected) {
-      return 'Error: MCP server "$serverName" is not connected.';
+      return McpOperationResult.error(
+        'Error: MCP server "$serverName" is not connected.',
+      );
     }
 
     try {
       await session.refresh();
       final prompts = session.prompts;
       if (prompts.isEmpty) {
-        return 'No prompts available on MCP server "$serverName".';
+        return McpOperationResult(
+          'No prompts available on MCP server "$serverName".',
+        );
       }
 
       final buffer = StringBuffer();
@@ -451,13 +495,15 @@ class McpManager {
         }
         buffer.writeln();
       }
-      return buffer.toString();
+      return McpOperationResult(buffer.toString());
     } catch (e) {
-      return 'Error listing prompts from "$serverName": $e';
+      return McpOperationResult.error(
+        'Error listing prompts from "$serverName": $e',
+      );
     }
   }
 
-  Future<String> _mcpGetPrompt(Map<String, dynamic> args) async {
+  Future<McpOperationResult> _mcpGetPrompt(Map<String, dynamic> args) async {
     final serverName = args['server_name'] as String;
     final promptName = args['prompt_name'] as String;
     final arguments = (args['arguments'] as Map<String, dynamic>?)?.map(
@@ -466,16 +512,22 @@ class McpManager {
 
     final session = _sessions[serverName];
     if (session == null) {
-      return 'Error: MCP server "$serverName" not found or not connected.';
+      return McpOperationResult.error(
+        'Error: MCP server "$serverName" not found or not connected.',
+      );
     }
     if (!session.isConnected) {
-      return 'Error: MCP server "$serverName" is not connected.';
+      return McpOperationResult.error(
+        'Error: MCP server "$serverName" is not connected.',
+      );
     }
 
     try {
-      return await session.getPrompt(promptName, arguments);
+      return await session.getPromptResult(promptName, arguments);
     } catch (e) {
-      return 'Error getting prompt "$promptName" from "$serverName": $e';
+      return McpOperationResult.error(
+        'Error getting prompt "$promptName" from "$serverName": $e',
+      );
     }
   }
 
