@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dart_agent_core/dart_agent_core.dart';
@@ -233,6 +234,46 @@ void main() {
       await store.flush();
       final f = File('${tmp.path}/ab/cd/abcdef00112233.json');
       expect(await f.exists(), isTrue);
+    });
+
+    test('concurrent puts during a delayed flush all land on disk', () async {
+      final store = FileRecordingStore(tmp);
+      final enteredWrite = Completer<void>();
+      final releaseWrite = Completer<void>();
+      var writeCount = 0;
+      store.beforeWrite = () async {
+        writeCount++;
+        if (writeCount == 1) {
+          enteredWrite.complete();
+          await releaseWrite.future;
+        }
+      };
+
+      const hashA = 'aaaa0000000001';
+      const hashB = 'bbbb0000000002';
+      const hashC = 'cccc0000000003';
+
+      await store.put(hashA, textReply('first'));
+      await enteredWrite.future;
+      // These arrive after the in-flight flush snapped+cleared pending,
+      // so without a post-flush reschedule they are stranded in memory.
+      await store.put(hashB, textReply('second'));
+      await store.put(hashC, textReply('third'));
+      releaseWrite.complete();
+
+      // Do not call flush() — that salvages stranded pending and hides the
+      // race. Wait for background flushes, then reopen from disk.
+      await _waitUntil(() async {
+        final a = File('${tmp.path}/aa/aa/$hashA.json');
+        final b = File('${tmp.path}/bb/bb/$hashB.json');
+        final c = File('${tmp.path}/cc/cc/$hashC.json');
+        return await a.exists() && await b.exists() && await c.exists();
+      });
+
+      final reopened = FileRecordingStore(tmp);
+      expect((await reopened.get(hashA))!.textOutput, 'first');
+      expect((await reopened.get(hashB))!.textOutput, 'second');
+      expect((await reopened.get(hashC))!.textOutput, 'third');
     });
   });
 
@@ -541,6 +582,18 @@ void main() {
       );
     });
   });
+}
+
+Future<void> _waitUntil(
+  Future<bool> Function() predicate, {
+  Duration timeout = const Duration(seconds: 2),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    if (await predicate()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  fail('condition not met within $timeout');
 }
 
 class _CountingRateLimitGate implements RateLimitGate {

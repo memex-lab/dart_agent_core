@@ -169,6 +169,61 @@ void main() {
     });
 
     test(
+      'errored/timedOut trials with passing graders do not count as metric passes',
+      () {
+        final errored = makeTrialResult(
+          runName: 'r',
+          suiteName: 's',
+          taskId: 'a',
+          trialIndex: 0,
+          scores: [okScore('noop')],
+          status: TrialStatus.errored,
+        );
+        final timedOut = makeTrialResult(
+          runName: 'r',
+          suiteName: 's',
+          taskId: 'a',
+          trialIndex: 1,
+          scores: [okScore('noop')],
+          status: TrialStatus.timedOut,
+        );
+        final skipped = makeTrialResult(
+          runName: 'r',
+          suiteName: 's',
+          taskId: 'b',
+          trialIndex: 0,
+          scores: [okScore('noop')],
+          status: TrialStatus.skipped,
+        );
+        final passed = makeTrialResult(
+          runName: 'r',
+          suiteName: 's',
+          taskId: 'b',
+          trialIndex: 1,
+          scores: [okScore('noop')],
+        );
+
+        expect(errored.allGradersPassed, isFalse);
+        expect(timedOut.allGradersPassed, isFalse);
+        expect(skipped.allGradersPassed, isFalse);
+        expect(passed.allGradersPassed, isTrue);
+
+        final report = EvalRunReport(
+          runName: 'r',
+          suite: suiteOf(SuiteKind.mixed),
+          trials: [errored, timedOut, skipped, passed],
+          startedAt: DateTime(2025),
+          endedAt: DateTime(2025).add(const Duration(seconds: 1)),
+        );
+        expect(report.trialPassRate, 0.25);
+        // Task a: errored + timedOut → no metric passes.
+        expect(report.passAtKByTask(ks: const [1])['a']![1], 0.0);
+        // Task b: skipped + passed → pass@1 = 0.5.
+        expect(report.passAtKByTask(ks: const [1])['b']![1], 0.5);
+      },
+    );
+
+    test(
       'taskPassRate for capability suites: at least one trial passes per task',
       () {
         final report = EvalRunReport(

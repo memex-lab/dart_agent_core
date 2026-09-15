@@ -70,6 +70,44 @@ void main() {
         expect(toolResult['is_error'], isTrue);
       },
     );
+
+    test('ToolChoiceMode.none maps to tool_choice type none', () async {
+      final adapter = _CaptureAdapter([
+        (_) => _jsonResponse({
+          'content': [
+            {'type': 'text', 'text': 'ok'},
+          ],
+          'stop_reason': 'end_turn',
+          'usage': {'input_tokens': 1, 'output_tokens': 1},
+        }),
+      ]);
+      final client = BedrockClaudeClient(
+        region: 'us-east-1',
+        accessKeyId: 'AKIATEST',
+        secretAccessKey: 'secret-test',
+        client: Dio()..httpClientAdapter = adapter,
+      );
+
+      await client.generate(
+        [UserMessage.text('do not use tools')],
+        tools: [
+          Tool(
+            name: 'lookup',
+            description: 'Look something up',
+            parameters: const {
+              'type': 'object',
+              'properties': <String, dynamic>{},
+            },
+          ),
+        ],
+        toolChoice: ToolChoice(mode: ToolChoiceMode.none),
+        modelConfig: ModelConfig(model: 'anthropic.claude-test'),
+      );
+
+      final body = adapter.bodies.single as Map<String, dynamic>;
+      expect(body['tools'], isNotEmpty);
+      expect(body['tool_choice'], {'type': 'none'});
+    });
   });
 }
 

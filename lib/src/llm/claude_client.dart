@@ -8,6 +8,7 @@ import '../core/http_util.dart';
 import '../core/llm_client.dart';
 import '../core/message.dart';
 import '../core/tool.dart';
+import 'llm_request_util.dart';
 
 /// Client for the Anthropic Messages API (direct, not via AWS Bedrock).
 ///
@@ -122,6 +123,7 @@ class ClaudeClient extends LLMClient {
           'Claude API Error: ${response.statusCode} ${response.data}',
         );
       } on DioException catch (e) {
+        if (isLlmRequestCancelled(e)) rethrow;
         if (retryCount < maxRetries) {
           await _waitForRetry(retryCount, 'DioException: ${e.message}');
           retryCount++;
@@ -205,6 +207,7 @@ class ClaudeClient extends LLMClient {
         );
       } catch (e) {
         if (e is DioException) {
+          if (isLlmRequestCancelled(e)) rethrow;
           if (retryCount < maxRetries) {
             await _waitForRetry(retryCount, 'DioException: ${e.message}');
             retryCount++;
@@ -389,7 +392,10 @@ class ClaudeClient extends LLMClient {
       }).toList();
 
       if (toolChoice != null) {
-        if (toolChoice.mode == ToolChoiceMode.auto) {
+        if (toolChoice.mode == ToolChoiceMode.none) {
+          // Omitting tool_choice still lets Claude call tools; send type none.
+          body['tool_choice'] = {'type': 'none'};
+        } else if (toolChoice.mode == ToolChoiceMode.auto) {
           body['tool_choice'] = {'type': 'auto'};
         } else if (toolChoice.mode == ToolChoiceMode.required) {
           if (toolChoice.allowedFunctionNames != null &&
