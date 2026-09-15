@@ -249,6 +249,8 @@ class CorePersonalitySkill extends Skill {
 
 注册 `SubAgent` 后，Agent 可以把任务委派给专长 Worker。Worker 运行在隔离上下文（自己的 `AgentState`）中，并以文本返回结果。
 
+每个 Worker factory 必须设置 `isSubAgent: true`。该标志（或会话元数据 `sub_agent_mode`）会抑制嵌套的 `delegate_task` 注入，避免 Worker 再次委派。
+
 ```dart
 final researchSubAgent = SubAgent(
   name: 'researcher',

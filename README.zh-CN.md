@@ -458,6 +458,8 @@ agent.registerJavaScriptBridgeChannel('local.greeting', (payload, context) {
 
 可注册专长子 Agent 来处理可并行或专业化任务。每个 Worker 都运行在隔离的 `AgentState` 中。
 
+每个 Worker factory 必须设置 `isSubAgent: true`。该标志（或会话元数据 `sub_agent_mode`）会抑制嵌套的 `delegate_task`，避免 Worker 再次委派。
+
 ```dart
 final agent = StatefulAgent(
   ...
