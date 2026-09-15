@@ -25,8 +25,9 @@ class Tool {
   /// Optionally classifies a successfully returned value as a tool error.
   ///
   /// This is useful for tools that preserve a legacy return type while using
-  /// sentinel values to report failures. Exceptions are always treated as
-  /// errors independently of this callback.
+  /// sentinel values to report failures. Exceptions become tool errors
+  /// independently of this callback, unless the run's shared cancellation
+  /// token has been cancelled, in which case cancellation terminates the run.
   final bool Function(dynamic result)? resultIsError;
 
   Tool({

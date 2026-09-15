@@ -25,6 +25,8 @@ final _delegateTaskTool = Tool(
       'This tool runs a separate agent loop and returns the final result. '
       'Use this to isolate context or utilize specific expertise.',
   executable: _delegateTask,
+  resultIsError: (result) =>
+      result is AgentToolResult && result.metadata?['status'] == 'error',
   parameters: {
     'type': 'object',
     'properties': {
@@ -102,6 +104,7 @@ Future<AgentToolResult> _delegateTask(
           content: TextPart(
             "Error: Sub-agent '$assignee' is not available. please don't delegate task to it.",
           ),
+          metadata: {'assignee': assignee, 'status': 'error'},
         );
       }
       // Keep isSubAgentMode(state) in sync with isSubAgent for named factories.
@@ -118,6 +121,7 @@ Future<AgentToolResult> _delegateTask(
         content: TextPart(
           "Error: Sub-agent '$assignee' not found in registry.",
         ),
+        metadata: {'assignee': assignee, 'status': 'error'},
       );
     }
   }
@@ -168,6 +172,9 @@ You are currently running as a delegated **Sub-Agent** (Worker).
       },
     );
   } catch (e) {
+    // Only cancellation of the shared task should escape worker isolation.
+    // Local budget exhaustion, hook stops and failures remain tool results.
+    if (cancelToken?.isCancelled ?? false) rethrow;
     _subAgentLogger.warning(
       "[${workerAgent.name}] Sub-agent ($assignee) execution failed: $e",
     );

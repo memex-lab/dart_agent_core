@@ -133,7 +133,7 @@ Tool(
 );
 ```
 
-无论该回调如何，抛出的异常始终会报告为工具错误。
+抛出的异常会报告为工具错误，不受该回调影响；但当前任务共享的 `CancelToken` 已取消时，会终止运行并传播取消。
 
 ### 在工具内部访问 Agent 状态
 
@@ -277,3 +277,7 @@ Agent 通过 `delegate_task` 工具触发委派：
 - 传入已注册子 Agent 的名称（例如 `assignee: 'researcher'`）以使用专长 Worker。
 
 Worker 会收到父 Agent 近期历史的快照作为上下文，执行任务后把最终 `ModelMessage` 文本返回给父 Agent。
+
+### Worker 失败与取消
+
+取消父任务共享的 `CancelToken` 会停止委派运行，并将取消传递给父 Agent。Worker 自身的异常、轮数上限、循环检测或 hook 中止会转为 `isError: true` 的工具结果，让父 Agent 决定如何恢复。不会仅凭 Worker 的异常码取消整个任务；需要停止整个任务的 hook 应取消共享 token。
