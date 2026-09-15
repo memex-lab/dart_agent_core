@@ -19,10 +19,17 @@ class TrialResult {
 
   /// True if every score (excluding null-valued ones) reports passed=true.
   /// Null-valued scores (e.g. judge returned Unknown) are ignored.
-  bool get allGradersPassed {
-    final passing = scores.where((s) => s.passed != null);
-    if (passing.isEmpty) return false;
-    return passing.every((s) => s.passed == true);
+  /// Returns false when no grader decided (all scores null / empty list).
+  bool get allGradersPassed => scoresIndicatePass(scores);
+
+  /// Whether [scores] indicate a passing trial.
+  ///
+  /// Same rules as [allGradersPassed]: ignore `passed == null`, and treat
+  /// "no grader decided" as not passed.
+  static bool scoresIndicatePass(Iterable<Score> scores) {
+    final decided = scores.where((s) => s.passed != null);
+    if (decided.isEmpty) return false;
+    return decided.every((s) => s.passed == true);
   }
 
   /// Mean of non-null score values. Returns null if all scores are null.

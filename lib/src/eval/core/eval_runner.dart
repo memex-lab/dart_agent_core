@@ -317,10 +317,9 @@ extension on EvalRunner {
       }
     }
 
-    // Final trial status reflects graders.
-    final passed = scores
-        .where((s) => s.passed != null)
-        .every((s) => s.passed == true);
+    // Final trial status reflects graders (same rules as
+    // [TrialResult.allGradersPassed]).
+    final passed = TrialResult.scoresIndicatePass(scores);
     if (status == TrialStatus.passed && !passed) status = TrialStatus.failed;
 
     trial = Trial(
