@@ -1,7 +1,56 @@
 import 'package:dart_agent_core/eval.dart';
 import 'package:test/test.dart';
 
+import '_helpers.dart';
+
 void main() {
+  group('TrialResult.allGradersPassed', () {
+    test('only passed:null scores → false (no grader decided)', () {
+      final result = TrialResult(
+        trial: makeTrial(
+          runName: 'r',
+          suiteName: 's',
+          taskId: 't',
+          status: TrialStatus.passed,
+        ),
+        transcript: emptyTranscript(),
+        outcome: const Outcome(environmentState: {}),
+        scores: [nullScore('judge'), nullScore('human')],
+      );
+      expect(result.allGradersPassed, isFalse);
+    });
+
+    test('empty scores → false', () {
+      final result = TrialResult(
+        trial: makeTrial(
+          runName: 'r',
+          suiteName: 's',
+          taskId: 't',
+          status: TrialStatus.passed,
+        ),
+        transcript: emptyTranscript(),
+        outcome: const Outcome(environmentState: {}),
+        scores: const [],
+      );
+      expect(result.allGradersPassed, isFalse);
+    });
+
+    test('null scores ignored when at least one grader decided pass', () {
+      final result = TrialResult(
+        trial: makeTrial(
+          runName: 'r',
+          suiteName: 's',
+          taskId: 't',
+          status: TrialStatus.passed,
+        ),
+        transcript: emptyTranscript(),
+        outcome: const Outcome(environmentState: {}),
+        scores: [okScore('code'), nullScore('judge')],
+      );
+      expect(result.allGradersPassed, isTrue);
+    });
+  });
+
   group('Trial.cacheSalt', () {
     Trial t({
       String runName = 'r',

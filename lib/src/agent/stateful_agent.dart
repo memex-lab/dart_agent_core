@@ -16,6 +16,7 @@ import 'package:logging/logging.dart';
 import '../core/llm_client.dart';
 import '../core/message.dart';
 import '../core/tool.dart';
+import '../llm/llm_request_util.dart';
 import 'context_compressor.dart';
 import 'planner.dart';
 import 'memory.dart';
@@ -127,7 +128,15 @@ class _ModelMessageAccumulator {
   Map<String, dynamic>? metadata;
 
   bool get isEmptyResponse =>
-      _functionCalls.isEmpty && _text.isEmpty && responseId == null;
+      // Thought-only and media-only stops are still a real model turn.
+      _functionCalls.isEmpty &&
+      _text.isEmpty &&
+      _thought.isEmpty &&
+      _contentBlocks.isEmpty &&
+      _imageOutputs.isEmpty &&
+      _videoOutputs.isEmpty &&
+      _audioOutputs.isEmpty &&
+      responseId == null;
 
   void add(ModelMessage chunk) {
     if (chunk.textOutput != null) {
@@ -542,7 +551,7 @@ class StatefulAgent {
     }
 
     //2. Sub Agents
-    if (!isSubAgentMode(state)) {
+    if (!isEffectivelySubAgent(this)) {
       if (!disableSubAgents) {
         final subAgentInstruction = buildSubAgentSystemPrompt(state, subAgents);
         if (subAgentInstruction != null) {
@@ -680,7 +689,7 @@ class StatefulAgent {
     }
 
     // 3. Inject sub agent tools
-    if (!isSubAgentMode(state)) {
+    if (!isEffectivelySubAgent(this)) {
       if (!disableSubAgents) {
         toolsCopy.addAll(subAgentTools);
       }
@@ -1001,7 +1010,8 @@ class StatefulAgent {
             error: cancelToken!.cancelError,
           );
         }
-        state.currentLoopCount++;
+        // totalLoopCount counts every LLM attempt; currentLoopCount only after
+        // a reply is committed past empty/hook retries (maxTurns budget).
         state.totalLoopCount++;
 
         final aggregation = _ModelMessageAccumulator();
@@ -1154,6 +1164,8 @@ class StatefulAgent {
         }
         fullMessage = afterModel.response!;
         currentRetryCount = 0;
+        // maxTurns uses currentLoopCount; empty/hook retries already returned.
+        state.currentLoopCount++;
 
         _logModelMessage(fullMessage, false);
         stopReason = fullMessage.stopReason ?? "unknown";
@@ -1238,7 +1250,17 @@ class StatefulAgent {
       );
     } on AgentException catch (e) {
       error = e;
-      _logger.severe('[$name] ❌ Agent run failed: $e');
+      // Match DioException: persist lastError and notify the controller.
+      state.lastError = e.error?.toString() ?? e.message;
+      if (e.code == AgentExceptionCode.cancelled) {
+        _logger.warning(
+          '[$name] 🤖 Agent run cancelled: ${e.message}, reason: ${e.error?.toString()}',
+        );
+        controller?.publish(OnAgentCancelEvent(this, e, e.error?.toString()));
+      } else {
+        _logger.severe('[$name] ❌ Agent run failed: $e');
+        controller?.publish(OnAgentExceptionEvent(this, e));
+      }
       rethrow;
     } on DioException catch (e) {
       state.lastError = e.error?.toString() ?? e.message;
@@ -1939,10 +1961,7 @@ class StatefulAgent {
   }
 
   bool isCancelled(Object error) {
-    if (error is DioException && CancelToken.isCancel(error)) {
-      return true;
-    }
-    return false;
+    return isLlmRequestCancelled(error);
   }
 
   void _injectSystemReminder(List<LLMMessage> requestMessages) {

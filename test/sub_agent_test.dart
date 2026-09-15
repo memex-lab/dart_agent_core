@@ -97,6 +97,75 @@ void main() {
     },
   );
 
+  test('doc-shaped factory with only isSubAgent omits delegate_task', () {
+    final worker = StatefulAgent(
+      name: 'researcher',
+      client: _QueuedLLMClient([]),
+      modelConfig: ModelConfig(model: 'fake-model'),
+      state: AgentState.empty(),
+      withGeneralPrinciples: false,
+      isSubAgent: true,
+    );
+
+    expect(
+      worker.composeTools().map((tool) => tool.name),
+      isNot(contains('delegate_task')),
+    );
+    expect(
+      worker.composeSystemMessage()?.content ?? '',
+      isNot(contains('delegate_task')),
+    );
+  });
+
+  test(
+    'named doc-shaped factory gets sub_agent_mode metadata on delegate',
+    () async {
+      final client = _QueuedLLMClient([
+        _toolCallReply('delegate_task', {
+          'assignee': 'researcher',
+          'task_description': 'Look it up.',
+        }),
+        _textReply('research done'),
+        _textReply('parent done'),
+      ]);
+      final parentState = AgentState.empty();
+      late StatefulAgent worker;
+      final agent = StatefulAgent(
+        name: 'manager',
+        client: client,
+        modelConfig: ModelConfig(model: 'fake-model'),
+        state: parentState,
+        withGeneralPrinciples: false,
+        subAgents: [
+          SubAgent(
+            name: 'researcher',
+            description: 'Researches',
+            agentFactory: (parent) {
+              worker = StatefulAgent(
+                name: 'researcher',
+                client: parent.client,
+                modelConfig: parent.modelConfig,
+                state: AgentState(sessionId: 'worker-doc'),
+                withGeneralPrinciples: false,
+                isSubAgent: true,
+              );
+              return worker;
+            },
+          ),
+        ],
+      );
+
+      await agent.run([UserMessage.text('delegate')], useStream: false);
+
+      expect(worker.state.metadata['sub_agent_mode'], isTrue);
+      expect(worker.state.metadata['parent_session_id'], parentState.sessionId);
+      expect(
+        worker.composeTools().map((tool) => tool.name),
+        isNot(contains('delegate_task')),
+      );
+    },
+  );
+
   test('named factory that forgets isSubAgent is rejected', () async {
     final client = _QueuedLLMClient([
       _toolCallReply('delegate_task', {

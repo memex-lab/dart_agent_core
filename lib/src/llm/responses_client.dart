@@ -6,6 +6,7 @@ import '../core/http_util.dart';
 import '../core/llm_client.dart';
 import '../core/message.dart';
 import '../core/tool.dart';
+import 'llm_request_util.dart';
 import 'package:logging/logging.dart';
 
 class ResponsesClient extends LLMClient {
@@ -132,6 +133,7 @@ class ResponsesClient extends LLMClient {
           );
         }
       } on DioException catch (e) {
+        if (isLlmRequestCancelled(e)) rethrow;
         if (retryCount < maxRetries) {
           await waitForRetry('DioException: ${e.message}');
           continue;
@@ -288,6 +290,11 @@ class ResponsesClient extends LLMClient {
           controller.close();
           break;
         } on DioException catch (e) {
+          if (isLlmRequestCancelled(e)) {
+            controller.addError(e);
+            controller.close();
+            break;
+          }
           if (retryCount < maxRetries) {
             await waitForRetry('DioException: ${e.message}');
             controller.add(

@@ -106,6 +106,28 @@ class _ExpectsValueGrader extends CodeGrader {
   }
 }
 
+/// Grader that never decides (e.g. LLM judge returned Unknown).
+class _NullScoreGrader implements Grader {
+  @override
+  String get name => 'undecided';
+
+  @override
+  GraderKind get kind => GraderKind.model;
+
+  @override
+  double get passThreshold => 1.0;
+
+  @override
+  Future<Score> grade({
+    required Trial trial,
+    required Transcript transcript,
+    required Outcome outcome,
+    required EvalContext context,
+    ReferenceSolution? referenceSolution,
+  }) async =>
+      Score(graderName: name, value: null, passed: null, rationale: 'Unknown');
+}
+
 class _Task implements EvalTask {
   @override
   final String id;
@@ -245,14 +267,14 @@ void main() {
       // Trials = 2 + 1 + 1 = 4. Two pos pass, one neg fails, one errored.
       expect(report.trials, hasLength(4));
 
-      // pos: 2 pass; neg: 0; errored: 0 (because trial.status=errored has
-      // no scores from harness — but graders still run, and check value==null
-      // which IS true after error → so errored task actually passes its grader.
-      // Verify by direct inspection:
+      // pos: 2 pass; neg: 0; errored must not count as a metric pass even if a
+      // grader would accept the placeholder empty outcome.
       final byTask = report.trialsByTask();
       expect(byTask['pos']!.every((t) => t.allGradersPassed), isTrue);
       expect(byTask['neg']!.every((t) => t.allGradersPassed), isFalse);
       expect(byTask['errored']!.first.trial.status, TrialStatus.errored);
+      expect(byTask['errored']!.first.allGradersPassed, isFalse);
+      expect(report.trialPassRate, 0.5); // 2 of 4
 
       // Composite exporter delivered all phases to the recording exporter.
       expect(
@@ -289,6 +311,39 @@ void main() {
       await recordingStore.flush();
     });
 
+    test(
+      'only passed:null grader scores → trial status is not passed',
+      () async {
+        final suite = EvalSuite(
+          name: 's',
+          agentName: 'agent_x',
+          kind: SuiteKind.mixed,
+          tasks: [
+            _Task(
+              id: 'undecided',
+              input: {'outcome_value': 1},
+              graders: [_NullScoreGrader()],
+            ),
+          ],
+        );
+        final runner = EvalRunner(
+          environment: _StubEnvironment(),
+          harnessFactory: _StubHarnessFactory(),
+        );
+        final report = await runner.runSuite(
+          runName: 'null_scores_run',
+          suite: suite,
+          concurrency: 1,
+        );
+        final tr = report.trials.single;
+        expect(tr.scores, hasLength(1));
+        expect(tr.scores.single.passed, isNull);
+        expect(tr.allGradersPassed, isFalse);
+        expect(tr.trial.status, isNot(TrialStatus.passed));
+        expect(tr.trial.status, TrialStatus.failed);
+      },
+    );
+
     test('per-task timeout marks the trial timedOut', () async {
       final suite = EvalSuite(
         name: 's',
@@ -314,6 +369,10 @@ void main() {
       );
       expect(report.trials.first.trial.status, TrialStatus.timedOut);
       expect(report.trials.first.trial.failureReason, contains('timed out'));
+      // Grader would pass on empty placeholder outcome (expected: null), but a
+      // timeout must not count as a metric pass.
+      expect(report.trials.first.allGradersPassed, isFalse);
+      expect(report.trialPassRate, 0.0);
     });
 
     test(

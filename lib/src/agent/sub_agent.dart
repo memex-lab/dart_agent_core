@@ -88,6 +88,7 @@ Future<AgentToolResult> _delegateTask(
       hooks: parentAgent.hooks,
       controller: parentAgent.controller,
       isSubAgent: true,
+      disableSubAgents: true,
     );
   } else {
     try {
@@ -103,6 +104,12 @@ Future<AgentToolResult> _delegateTask(
           ),
         );
       }
+      // Keep isSubAgentMode(state) in sync with isSubAgent for named factories.
+      workerAgent.state.metadata['sub_agent_mode'] = true;
+      workerAgent.state.metadata.putIfAbsent(
+        'parent_session_id',
+        () => parentState.sessionId,
+      );
     } catch (e) {
       _subAgentLogger.warning(
         "[${parentAgent.name}] Sub-agent ($assignee) not found in registry",
