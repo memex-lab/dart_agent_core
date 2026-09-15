@@ -128,7 +128,15 @@ class _ModelMessageAccumulator {
   Map<String, dynamic>? metadata;
 
   bool get isEmptyResponse =>
-      _functionCalls.isEmpty && _text.isEmpty && responseId == null;
+      // Thought-only and media-only stops are still a real model turn.
+      _functionCalls.isEmpty &&
+      _text.isEmpty &&
+      _thought.isEmpty &&
+      _contentBlocks.isEmpty &&
+      _imageOutputs.isEmpty &&
+      _videoOutputs.isEmpty &&
+      _audioOutputs.isEmpty &&
+      responseId == null;
 
   void add(ModelMessage chunk) {
     if (chunk.textOutput != null) {

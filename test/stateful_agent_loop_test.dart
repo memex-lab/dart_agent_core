@@ -114,6 +114,107 @@ void main() {
     expect(agent.state.isRunning, isTrue);
   });
 
+  test('thought-only stop reply is not treated as empty', () async {
+    final client = _QueuedLLMClient([
+      ModelMessage(
+        model: 'fake-model',
+        thought: 'reasoning only',
+        stopReason: 'stop',
+      ),
+      _textReply('should not run'),
+    ]);
+    final agent = _agent(client: client);
+
+    await agent.run([UserMessage.text('think')], useStream: false);
+
+    expect(client.generateCalls, 1);
+    final last = agent.state.history.messages.whereType<ModelMessage>().last;
+    expect(last.thought, 'reasoning only');
+    expect(last.textOutput, isNull);
+    expect(agent.state.isRunning, isFalse);
+  });
+
+  test('image-only stop reply is not treated as empty', () async {
+    final client = _QueuedLLMClient([
+      ModelMessage(
+        model: 'fake-model',
+        stopReason: 'stop',
+        imageOutputs: [ModelImagePart('abc123', mimeType: 'image/png')],
+      ),
+      _textReply('should not run'),
+    ]);
+    final agent = _agent(client: client);
+
+    await agent.run([UserMessage.text('draw')], useStream: false);
+
+    expect(client.generateCalls, 1);
+    final last = agent.state.history.messages.whereType<ModelMessage>().last;
+    expect(last.imageOutputs, hasLength(1));
+    expect(last.textOutput, isNull);
+    expect(agent.state.isRunning, isFalse);
+  });
+
+  test('contentBlocks-only stop reply is not treated as empty', () async {
+    final client = _QueuedLLMClient([
+      ModelMessage(
+        model: 'fake-model',
+        stopReason: 'stop',
+        contentBlocks: [
+          {'type': 'thinking', 'thinking': 'block only'},
+        ],
+      ),
+      _textReply('should not run'),
+    ]);
+    final agent = _agent(client: client);
+
+    await agent.run([UserMessage.text('blocks')], useStream: false);
+
+    expect(client.generateCalls, 1);
+    final last = agent.state.history.messages.whereType<ModelMessage>().last;
+    expect(last.contentBlocks, hasLength(1));
+    expect(last.textOutput, isNull);
+    expect(agent.state.isRunning, isFalse);
+  });
+
+  test('empty response with stopReason retries then succeeds', () async {
+    final client = _QueuedLLMClient([
+      ModelMessage(model: 'fake-model', stopReason: 'stop'),
+      ModelMessage(model: 'fake-model', stopReason: 'stop'),
+      _textReply('final'),
+    ]);
+    final agent = _agent(client: client);
+
+    await agent.run([UserMessage.text('hello')], useStream: false);
+
+    expect(client.generateCalls, 3);
+    expect(
+      (agent.state.history.messages.whereType<ModelMessage>().last).textOutput,
+      'final',
+    );
+  });
+
+  test('three empty responses throw loopDetection', () async {
+    final client = _QueuedLLMClient([
+      ModelMessage(model: 'fake-model', stopReason: 'stop'),
+      ModelMessage(model: 'fake-model', stopReason: 'stop'),
+      ModelMessage(model: 'fake-model', stopReason: 'stop'),
+    ]);
+    final agent = _agent(client: client);
+
+    await expectLater(
+      agent.run([UserMessage.text('hello')], useStream: false),
+      throwsA(
+        isA<AgentException>().having(
+          (e) => e.code,
+          'code',
+          AgentExceptionCode.loopDetection,
+        ),
+      ),
+    );
+    expect(client.generateCalls, 3);
+    expect(agent.state.isRunning, isTrue);
+  });
+
   test(
     'maxTurns throws loopDetection and resume starts a fresh budget',
     () async {
