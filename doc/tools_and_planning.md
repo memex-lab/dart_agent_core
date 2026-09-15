@@ -250,6 +250,8 @@ class CorePersonalitySkill extends Skill {
 
 Register `SubAgent`s to let the agent delegate tasks to specialized worker agents. Workers run in an isolated context (their own `AgentState`) and return their result as text.
 
+Set `isSubAgent: true` on every worker factory. That flag (or session metadata `sub_agent_mode`) suppresses nested `delegate_task` injection so workers cannot re-delegate.
+
 ```dart
 final researchSubAgent = SubAgent(
   name: 'researcher',

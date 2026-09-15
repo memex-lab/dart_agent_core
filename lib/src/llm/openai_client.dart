@@ -6,6 +6,7 @@ import '../core/http_util.dart';
 import '../core/llm_client.dart';
 import '../core/message.dart';
 import '../core/tool.dart';
+import 'llm_request_util.dart';
 import 'package:logging/logging.dart';
 
 class OpenAIClient extends LLMClient {
@@ -114,6 +115,8 @@ class OpenAIClient extends LLMClient {
           );
         }
       } on DioException catch (e) {
+        // Cancel is terminal; retrying it just waits out the backoff.
+        if (isLlmRequestCancelled(e)) rethrow;
         if (retryCount < maxRetries) {
           await waitForRetry('DioException: ${e.message}');
           continue;
@@ -236,6 +239,11 @@ class OpenAIClient extends LLMClient {
           controller.close();
           break;
         } on DioException catch (e) {
+          if (isLlmRequestCancelled(e)) {
+            controller.addError(e);
+            controller.close();
+            break;
+          }
           if (retryCount < maxRetries) {
             await waitForRetry('DioException: ${e.message}');
             controller.add(
@@ -302,10 +310,16 @@ Map<String, dynamic> _createRequestBody(
                 'input_audio': {'data': part.base64Data, 'format': format},
               };
             } else if (part is DocumentPart) {
-              // Assuming source is base64 encoded data for file_data
+              // Chat Completions wants file_data as a data URI, not bare base64.
+              final fileData = part.base64Data.startsWith('data:')
+                  ? part.base64Data
+                  : 'data:${part.mimeType};base64,${part.base64Data}';
               return {
                 'type': 'file',
-                'file': {'file_data': part.base64Data},
+                'file': {
+                  'filename': _filenameForMimeType(part.mimeType),
+                  'file_data': fileData,
+                },
               };
             } else {
               throw Exception(
@@ -435,6 +449,42 @@ Map<String, dynamic> _createRequestBody(
   }
 
   return body;
+}
+
+/// Sensible download name for OpenAI `file` content parts from a MIME type.
+String _filenameForMimeType(String mimeType) {
+  final mime = mimeType.toLowerCase().split(';').first.trim();
+  switch (mime) {
+    case 'application/pdf':
+      return 'document.pdf';
+    case 'text/plain':
+      return 'document.txt';
+    case 'text/csv':
+    case 'application/csv':
+      return 'document.csv';
+    case 'application/json':
+      return 'document.json';
+    case 'text/html':
+      return 'document.html';
+    case 'text/markdown':
+      return 'document.md';
+    case 'application/msword':
+      return 'document.doc';
+    case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+      return 'document.docx';
+    case 'application/vnd.ms-excel':
+      return 'document.xls';
+    case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+      return 'document.xlsx';
+    default:
+      final slash = mime.indexOf('/');
+      final subtype = slash >= 0 ? mime.substring(slash + 1) : mime;
+      final ext = subtype.contains('+') ? subtype.split('+').last : subtype;
+      if (ext.isNotEmpty && RegExp(r'^[a-z0-9]{1,8}$').hasMatch(ext)) {
+        return 'document.$ext';
+      }
+      return 'document.bin';
+  }
 }
 
 ModelMessage _parseResponse(

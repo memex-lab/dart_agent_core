@@ -458,6 +458,8 @@ Bridge channels can be extended by host apps via:
 
 Register sub-agents for specialized or parallelizable work. Each worker runs in its own isolated `AgentState`.
 
+Set `isSubAgent: true` on every worker factory. That flag (or session metadata `sub_agent_mode`) suppresses nested `delegate_task` so workers cannot re-delegate.
+
 ```dart
 final agent = StatefulAgent(
   ...

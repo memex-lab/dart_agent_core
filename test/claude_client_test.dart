@@ -236,6 +236,43 @@ void main() {
         emitsError(predicate((error) => error.toString().contains('过载'))),
       );
     });
+
+    test('ToolChoiceMode.none maps to tool_choice type none', () async {
+      final adapter = _CaptureAdapter([
+        (_) => _jsonResponse({
+          'content': [
+            {'type': 'text', 'text': 'ok'},
+          ],
+          'stop_reason': 'end_turn',
+          'usage': {'input_tokens': 1, 'output_tokens': 1},
+        }),
+      ]);
+      final client = ClaudeClient(
+        apiKey: 'test-key',
+        client: Dio()..httpClientAdapter = adapter,
+      );
+
+      await client.generate(
+        [UserMessage.text('do not use tools')],
+        tools: [
+          Tool(
+            name: 'lookup',
+            description: 'Look something up',
+            parameters: const {
+              'type': 'object',
+              'properties': <String, dynamic>{},
+            },
+          ),
+        ],
+        toolChoice: ToolChoice(mode: ToolChoiceMode.none),
+        modelConfig: ModelConfig(model: 'claude-test'),
+      );
+
+      final body =
+          jsonDecode(adapter.requests.single as String) as Map<String, dynamic>;
+      expect(body['tools'], isNotEmpty);
+      expect(body['tool_choice'], {'type': 'none'});
+    });
   });
 }
 
