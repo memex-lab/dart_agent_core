@@ -16,6 +16,7 @@ import 'package:logging/logging.dart';
 import '../core/llm_client.dart';
 import '../core/message.dart';
 import '../core/tool.dart';
+import '../llm/llm_request_util.dart';
 import 'context_compressor.dart';
 import 'planner.dart';
 import 'memory.dart';
@@ -1934,10 +1935,7 @@ class StatefulAgent {
   }
 
   bool isCancelled(Object error) {
-    if (error is DioException && CancelToken.isCancel(error)) {
-      return true;
-    }
-    return false;
+    return isLlmRequestCancelled(error);
   }
 
   void _injectSystemReminder(List<LLMMessage> requestMessages) {
