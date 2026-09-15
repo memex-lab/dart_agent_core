@@ -92,6 +92,23 @@ void main() {
     },
   );
 
+  test('empty stopReason retry does not consume maxTurns budget', () async {
+    final client = _QueuedLLMClient([
+      ModelMessage(model: 'fake-model', textOutput: 'partial'),
+      _textReply('final'),
+    ]);
+    final agent = _agent(client: client, maxTurns: 2);
+
+    await agent.run([UserMessage.text('hello')], useStream: false);
+
+    expect(client.generateCalls, 2);
+    expect(
+      (agent.state.history.messages.whereType<ModelMessage>().last).textOutput,
+      'final',
+    );
+    expect(agent.state.currentLoopCount, 1);
+  });
+
   test('three empty stopReason retries throw loopDetection', () async {
     final client = _QueuedLLMClient([
       ModelMessage(model: 'fake-model', textOutput: 'a'),

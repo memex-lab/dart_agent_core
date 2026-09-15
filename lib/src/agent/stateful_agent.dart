@@ -1010,7 +1010,8 @@ class StatefulAgent {
             error: cancelToken!.cancelError,
           );
         }
-        state.currentLoopCount++;
+        // totalLoopCount counts every LLM attempt; currentLoopCount only after
+        // a reply is committed past empty/hook retries (maxTurns budget).
         state.totalLoopCount++;
 
         final aggregation = _ModelMessageAccumulator();
@@ -1163,6 +1164,8 @@ class StatefulAgent {
         }
         fullMessage = afterModel.response!;
         currentRetryCount = 0;
+        // maxTurns uses currentLoopCount; empty/hook retries already returned.
+        state.currentLoopCount++;
 
         _logModelMessage(fullMessage, false);
         stopReason = fullMessage.stopReason ?? "unknown";
