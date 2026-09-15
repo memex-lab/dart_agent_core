@@ -1,8 +1,30 @@
+## 2.1.6
+
+### Agent runtime
+
+- Propagate shared task cancellation through tools and sub-agents while keeping worker-local failures recoverable and marking failed delegations as tool errors. (#63)
+- Populate `lastError` and emit lifecycle events consistently when agent runs fail or are cancelled. (#64)
+- Keep empty-response and hook-requested retries from consuming the committed-turn budget. (#65)
+- Mark named sub-agents with `isSubAgent` and matching metadata so nested delegation respects sub-agent mode. (#66)
+- Treat thought, media, and other content blocks as non-empty model responses. (#62)
+
+### LLM clients and MCP
+
+- Encode OpenAI document inputs as MIME-qualified data URIs with filenames. (#53)
+- Honor `ToolChoiceMode.none` in Claude and Bedrock clients. (#54)
+- Preserve Dio cancellation exceptions and avoid retrying cancelled LLM requests. (#55)
+- Preserve structured MCP error status across bridge operations with `McpOperationResult` and typed session result methods, while retaining existing string-returning session APIs. (#60)
+
+### Evaluation
+
+- Schedule another recording-store flush when records arrive during an active write. (#57)
+- Apply validated task pass thresholds to partial scores without counting errored, timed-out, or skipped executions as passes; preserve binary trial and pass@k/pass^k metrics. (#58)
+- Mark trials without a grader decision as failed and exclude errored or timed-out trials from pass metrics. (#59, #61)
+
 ## 2.1.5
 
 - Keep `deactivate_skills` from throwing when `AgentState.activeSkills` is still null.
 - Skip unknown names in `activeSkills` while composing tools, so a stale persisted skill cannot crash the run.
-- Propagate shared task cancellation through tool and sub-agent execution; keep worker-local failures recoverable and mark failed delegations as tool errors.
 
 ## 2.1.4
 
