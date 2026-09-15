@@ -1906,6 +1906,11 @@ class StatefulAgent {
         } else {
           resultValue = result;
         }
+        // A tool may return normally after observing cancellation. Do not let
+        // its stopFlag or a worker result turn a cancelled task into success.
+        if (cancelToken?.isCancelled ?? false) {
+          throw cancelToken!.cancelError!;
+        }
         final isError = tool.resultIsError?.call(resultValue) ?? false;
         bool stopFlag = false;
         List<UserContentPart> resultContent = [];
@@ -1932,10 +1937,10 @@ class StatefulAgent {
           metadata: metadata,
         );
       } catch (e) {
-        // Control-flow AgentExceptions must leave the tool runner, not become
-        // FunctionMessage error text.
-        if (e is AgentException) {
-          rethrow;
+        // Exception codes alone do not define task scope: a worker can stop
+        // locally. Only the shared cancellation token terminates this run.
+        if (cancelToken?.isCancelled ?? false) {
+          throw cancelToken!.cancelError!;
         }
         _logger.severe(
           '[$name] ❌ Error executing ${call.name} with args ${call.arguments}: $e',

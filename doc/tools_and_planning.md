@@ -134,7 +134,7 @@ Tool(
 );
 ```
 
-Exceptions are always reported as tool errors regardless of this callback.
+Exceptions are reported as tool errors independently of this callback. If the run's shared `CancelToken` is cancelled, cancellation terminates the run instead.
 
 ### Accessing Agent State Inside a Tool
 
@@ -278,3 +278,7 @@ The agent uses the `delegate_task` tool to trigger delegation:
 - Pass a named sub-agent's name (e.g., `assignee: 'researcher'`) for specialized workers.
 
 The worker receives a snapshot of the parent's recent history as context, executes its task, and returns the final `ModelMessage` text to the parent.
+
+### Worker failures and cancellation
+
+Cancelling the parent run's shared `CancelToken` stops the delegated run and propagates cancellation to the parent. A worker-local exception, turn limit, loop detection, or hook abort becomes an `isError: true` tool result so the parent can choose another approach. A worker exception code alone does not cancel the whole task. Hooks that intend to stop the entire task should cancel the shared token.

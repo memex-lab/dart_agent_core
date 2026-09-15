@@ -5,6 +5,89 @@ import 'package:dio/dio.dart';
 import 'package:test/test.dart';
 
 void main() {
+  for (final code in AgentExceptionCode.values) {
+    test(
+      'tool-local $code is returned as an error without cancelling the run',
+      () async {
+        final client = _QueuedLLMClient([
+          _toolCallReply('local', {}),
+          _textReply('recovered'),
+        ]);
+        final agent = _agent(
+          client: client,
+          tools: [
+            Tool(
+              name: 'local',
+              description: 'local failure',
+              parameters: {'type': 'object', 'properties': {}},
+              parameterMode: ToolParameterMode.object,
+              executable: (Map<String, dynamic> _) =>
+                  throw AgentException(code, 'local failure'),
+            ),
+          ],
+        );
+        await agent.run(
+          [UserMessage.text('go')],
+          useStream: false,
+          cancelToken: CancelToken(),
+        );
+        final result = agent.state.history.messages
+            .whereType<FunctionExecutionResultMessage>()
+            .single
+            .results
+            .single;
+        expect(result.isError, isTrue);
+        expect(client.generateCalls, 2);
+      },
+    );
+  }
+
+  test(
+    'a normally returning cancelled tool cannot turn cancellation into success',
+    () async {
+      final token = CancelToken();
+      final client = _QueuedLLMClient([_toolCallReply('cancel', {})]);
+      final agent = _agent(
+        client: client,
+        tools: [
+          Tool(
+            name: 'cancel',
+            description: 'cancel',
+            parameters: {'type': 'object', 'properties': {}},
+            parameterMode: ToolParameterMode.object,
+            executable: (Map<String, dynamic> _) {
+              token.cancel('user cancelled');
+              return AgentToolResult(
+                content: TextPart('stopped'),
+                stopFlag: true,
+              );
+            },
+          ),
+        ],
+      );
+      await expectLater(
+        agent.run(
+          [UserMessage.text('go')],
+          useStream: false,
+          cancelToken: token,
+        ),
+        throwsA(
+          isA<AgentException>().having(
+            (e) => e.code,
+            'code',
+            AgentExceptionCode.cancelled,
+          ),
+        ),
+      );
+      expect(client.generateCalls, 1);
+      expect(
+        agent.state.history.messages
+            .whereType<FunctionExecutionResultMessage>(),
+        isEmpty,
+      );
+    },
+  );
+
   test('stopFlag ends the loop without a second model call', () async {
     final client = _QueuedLLMClient([
       _toolCallReply('halt', {}),

@@ -5,6 +5,56 @@ import 'package:dio/dio.dart';
 import 'package:test/test.dart';
 
 void main() {
+  for (final stop in ['budget', 'hook']) {
+    test('actual worker $stop stop lets the parent recover', () async {
+      final client = _QueuedLLMClient([
+        _toolCallReply('delegate_task', {
+          'assignee': 'worker',
+          'task_description': 'go',
+        }),
+        _textReply('parent recovered'),
+      ]);
+      final workerClient = _QueuedLLMClient([]);
+      final parent = StatefulAgent(
+        name: 'parent',
+        client: client,
+        modelConfig: ModelConfig(model: 'fake-model'),
+        state: AgentState.empty(),
+        withGeneralPrinciples: false,
+        subAgents: [
+          SubAgent(
+            name: 'worker',
+            description: 'worker',
+            agentFactory: (_) => StatefulAgent(
+              name: 'worker',
+              client: workerClient,
+              modelConfig: ModelConfig(model: 'fake-model'),
+              state: AgentState.empty(),
+              isSubAgent: true,
+              withGeneralPrinciples: false,
+              maxTurns: stop == 'budget' ? 0 : 20,
+              hooks: stop == 'hook' ? [_WorkerAbortHook()] : [],
+            ),
+          ),
+        ],
+      );
+      await parent.run(
+        [UserMessage.text('go')],
+        useStream: false,
+        cancelToken: CancelToken(),
+      );
+      expect(client.generateCalls, 2);
+      expect(workerClient.generateCalls, 0);
+      final result = parent.state.history.messages
+          .whereType<FunctionExecutionResultMessage>()
+          .single
+          .results
+          .single;
+      expect(result.isError, isTrue);
+      expect(result.metadata?['status'], 'error');
+    });
+  }
+
   test('named sub-agent runs and returns the worker text', () async {
     final client = _QueuedLLMClient([
       _toolCallReply('delegate_task', {
@@ -54,6 +104,7 @@ void main() {
         .results
         .single;
     expect((result.content.single as TextPart).text, contains('qa done'));
+    expect(result.isError, isFalse);
     expect(worker.isSubAgent, isTrue);
     expect(
       worker.composeTools().map((tool) => tool.name),
@@ -93,6 +144,15 @@ void main() {
                   as TextPart)
               .text;
       expect(text, contains('not found in registry'));
+      expect(
+        agent.state.history.messages
+            .whereType<FunctionExecutionResultMessage>()
+            .single
+            .results
+            .single
+            .isError,
+        isTrue,
+      );
       expect(client.generateCalls, 2);
     },
   );
@@ -209,6 +269,15 @@ void main() {
                 as TextPart)
             .text;
     expect(text, contains('is not available'));
+    expect(
+      agent.state.history.messages
+          .whereType<FunctionExecutionResultMessage>()
+          .single
+          .results
+          .single
+          .isError,
+      isTrue,
+    );
     expect(client.generateCalls, 2);
   });
 
@@ -354,63 +423,73 @@ void main() {
               .text;
       expect(text, contains('execution failed'));
       expect(text, contains('boom'));
+      expect(
+        agent.state.history.messages
+            .whereType<FunctionExecutionResultMessage>()
+            .single
+            .results
+            .single
+            .isError,
+        isTrue,
+      );
       expect(client.generateCalls, 3);
     },
   );
 
-  test('worker loopDetection AgentException propagates to parent', () async {
-    final client = _ThrowOnWorkerGenerateClient(
-      parentThenRecover: [
-        _toolCallReply('delegate_task', {
-          'assignee': 'QA_Expert',
-          'task_description': 'Review.',
-        }),
-        _textReply('should not reach if exception propagates'),
-      ],
-      workerError: AgentException(
-        AgentExceptionCode.loopDetection,
-        'worker looped',
-      ),
-    );
-    final agent = StatefulAgent(
-      name: 'manager',
-      client: client,
-      modelConfig: ModelConfig(model: 'fake-model'),
-      state: AgentState.empty(),
-      withGeneralPrinciples: false,
-      subAgents: [
-        SubAgent(
-          name: 'QA_Expert',
-          description: 'Reviews work',
-          agentFactory: (parent) => StatefulAgent(
-            name: 'qa',
-            client: parent.client,
-            modelConfig: parent.modelConfig,
-            state: AgentState(
-              sessionId: 'worker-loop',
-              metadata: {'sub_agent_mode': true},
+  for (final code in AgentExceptionCode.values) {
+    test('worker-local $code remains recoverable', () async {
+      final client = _ThrowOnWorkerGenerateClient(
+        parentThenRecover: [
+          _toolCallReply('delegate_task', {
+            'assignee': 'QA_Expert',
+            'task_description': 'Review.',
+          }),
+          _textReply('parent recovered'),
+        ],
+        workerError: AgentException(code, 'worker stopped locally'),
+      );
+      final agent = StatefulAgent(
+        name: 'manager',
+        client: client,
+        modelConfig: ModelConfig(model: 'fake-model'),
+        state: AgentState.empty(),
+        withGeneralPrinciples: false,
+        subAgents: [
+          SubAgent(
+            name: 'QA_Expert',
+            description: 'Reviews work',
+            agentFactory: (parent) => StatefulAgent(
+              name: 'qa',
+              client: parent.client,
+              modelConfig: parent.modelConfig,
+              state: AgentState(
+                sessionId: 'worker-loop',
+                metadata: {'sub_agent_mode': true},
+              ),
+              withGeneralPrinciples: false,
+              disableSubAgents: true,
+              isSubAgent: true,
             ),
-            withGeneralPrinciples: false,
-            disableSubAgents: true,
-            isSubAgent: true,
           ),
-        ),
-      ],
-    );
+        ],
+      );
 
-    await expectLater(
-      agent.run([UserMessage.text('delegate')], useStream: false),
-      throwsA(
-        isA<AgentException>().having(
-          (e) => e.code,
-          'code',
-          AgentExceptionCode.loopDetection,
-        ),
-      ),
-    );
-    expect(client.workerThrows, 1);
-    expect(client.parentRecoverCalls, 0);
-  });
+      await agent.run([UserMessage.text('delegate')], useStream: false);
+      final result = agent.state.history.messages
+          .whereType<FunctionExecutionResultMessage>()
+          .single
+          .results
+          .single;
+      expect(result.isError, isTrue);
+      expect(result.metadata?['status'], 'error');
+      expect(
+        (result.content.single as TextPart).text,
+        contains('worker stopped locally'),
+      );
+      expect(client.workerThrows, 1);
+      expect(client.parentRecoverCalls, 1);
+    });
+  }
 }
 
 class _QueuedLLMClient extends LLMClient {
@@ -597,4 +676,10 @@ class _ThrowOnWorkerGenerateClient extends LLMClient {
       ),
     );
   }
+}
+
+class _WorkerAbortHook extends AgentHook {
+  @override
+  BeforeRunHookResult beforeRun(BeforeRunHookContext context) =>
+      const BeforeRunHookResult.abort(reason: 'worker stopped locally');
 }

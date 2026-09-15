@@ -2,7 +2,7 @@
 
 - Keep `deactivate_skills` from throwing when `AgentState.activeSkills` is still null.
 - Skip unknown names in `activeSkills` while composing tools, so a stale persisted skill cannot crash the run.
-- Propagate worker `AgentException` control-flow codes (`cancelled`, `loopDetection`, `stopByController`) from `delegate_task` to the parent run instead of soft-erroring them; ordinary worker failures remain tool error text.
+- Propagate shared task cancellation through tool and sub-agent execution; keep worker-local failures recoverable and mark failed delegations as tool errors.
 
 ## 2.1.4
 
