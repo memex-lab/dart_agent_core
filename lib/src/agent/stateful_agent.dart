@@ -1247,7 +1247,17 @@ class StatefulAgent {
       );
     } on AgentException catch (e) {
       error = e;
-      _logger.severe('[$name] ❌ Agent run failed: $e');
+      // Match DioException: persist lastError and notify the controller.
+      state.lastError = e.error?.toString() ?? e.message;
+      if (e.code == AgentExceptionCode.cancelled) {
+        _logger.warning(
+          '[$name] 🤖 Agent run cancelled: ${e.message}, reason: ${e.error?.toString()}',
+        );
+        controller?.publish(OnAgentCancelEvent(this, e, e.error?.toString()));
+      } else {
+        _logger.severe('[$name] ❌ Agent run failed: $e');
+        controller?.publish(OnAgentExceptionEvent(this, e));
+      }
       rethrow;
     } on DioException catch (e) {
       state.lastError = e.error?.toString() ?? e.message;

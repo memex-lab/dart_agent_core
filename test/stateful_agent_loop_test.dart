@@ -282,6 +282,147 @@ void main() {
     expect(client.generateCalls, 0);
   });
 
+  test(
+    'CancelToken AgentException sets lastError and publishes cancel event',
+    () async {
+      final controller = AgentController();
+      final cancelEvents = <OnAgentCancelEvent>[];
+      final exceptionEvents = <OnAgentExceptionEvent>[];
+      final stoppedEvents = <AgentStoppedEvent>[];
+      controller.listen<OnAgentCancelEvent>().listen(cancelEvents.add);
+      controller.listen<OnAgentExceptionEvent>().listen(exceptionEvents.add);
+      controller.listen<AgentStoppedEvent>().listen(stoppedEvents.add);
+
+      final cancelToken = CancelToken();
+      final client = _QueuedLLMClient([_textReply('never')]);
+      final agent = _agent(client: client, controller: controller);
+      cancelToken.cancel('user cancelled');
+
+      await expectLater(
+        agent.run(
+          [UserMessage.text('hello')],
+          useStream: false,
+          cancelToken: cancelToken,
+        ),
+        throwsA(
+          isA<AgentException>().having(
+            (e) => e.code,
+            'code',
+            AgentExceptionCode.cancelled,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(agent.state.lastError, isNotNull);
+      expect(cancelEvents, hasLength(1));
+      expect(exceptionEvents, isEmpty);
+      expect(stoppedEvents, hasLength(1));
+      expect(stoppedEvents.single.error?.code, AgentExceptionCode.cancelled);
+      controller.close();
+    },
+  );
+
+  test(
+    'maxTurns AgentException sets lastError and publishes exception event',
+    () async {
+      final controller = AgentController();
+      final cancelEvents = <OnAgentCancelEvent>[];
+      final exceptionEvents = <OnAgentExceptionEvent>[];
+      final stoppedEvents = <AgentStoppedEvent>[];
+      controller.listen<OnAgentCancelEvent>().listen(cancelEvents.add);
+      controller.listen<OnAgentExceptionEvent>().listen(exceptionEvents.add);
+      controller.listen<AgentStoppedEvent>().listen(stoppedEvents.add);
+
+      final client = _RepeatingLLMClient(_toolCallReply('ping', {'n': 1}));
+      final agent = _agent(
+        client: client,
+        controller: controller,
+        maxTurns: 2,
+        tools: [
+          Tool(
+            name: 'ping',
+            description: 'ping',
+            parameters: const {
+              'type': 'object',
+              'properties': {
+                'n': {'type': 'integer'},
+              },
+            },
+            parameterMode: ToolParameterMode.object,
+            executable: (Map<String, dynamic> _) => 'pong',
+          ),
+        ],
+      );
+
+      await expectLater(
+        agent.run([UserMessage.text('loop')], useStream: false),
+        throwsA(
+          isA<AgentException>().having(
+            (e) => e.code,
+            'code',
+            AgentExceptionCode.loopDetection,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(agent.state.lastError, contains('Maximum turns reached'));
+      expect(exceptionEvents, hasLength(1));
+      expect(exceptionEvents.single.error, isA<AgentException>());
+      expect(cancelEvents, isEmpty);
+      expect(stoppedEvents, hasLength(1));
+      expect(
+        stoppedEvents.single.error?.code,
+        AgentExceptionCode.loopDetection,
+      );
+      controller.close();
+    },
+  );
+
+  test(
+    'empty stopReason retries AgentException sets lastError and exception event',
+    () async {
+      final controller = AgentController();
+      final cancelEvents = <OnAgentCancelEvent>[];
+      final exceptionEvents = <OnAgentExceptionEvent>[];
+      final stoppedEvents = <AgentStoppedEvent>[];
+      controller.listen<OnAgentCancelEvent>().listen(cancelEvents.add);
+      controller.listen<OnAgentExceptionEvent>().listen(exceptionEvents.add);
+      controller.listen<AgentStoppedEvent>().listen(stoppedEvents.add);
+
+      final client = _QueuedLLMClient([
+        ModelMessage(model: 'fake-model', textOutput: 'a'),
+        ModelMessage(model: 'fake-model', textOutput: 'b'),
+        ModelMessage(model: 'fake-model', textOutput: 'c'),
+      ]);
+      final agent = _agent(client: client, controller: controller);
+
+      await expectLater(
+        agent.run([UserMessage.text('hello')], useStream: false),
+        throwsA(
+          isA<AgentException>().having(
+            (e) => e.code,
+            'code',
+            AgentExceptionCode.loopDetection,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(agent.state.lastError, contains('empty stop reason'));
+      expect(exceptionEvents, hasLength(1));
+      expect(exceptionEvents.single.error, isA<AgentException>());
+      expect(cancelEvents, isEmpty);
+      expect(stoppedEvents, hasLength(1));
+      expect(
+        stoppedEvents.single.error?.code,
+        AgentExceptionCode.loopDetection,
+      );
+      controller.close();
+    },
+  );
+
   test('PlanMode.auto injects write_todos and records PlanState', () async {
     final client = _QueuedLLMClient([
       _toolCallReply('write_todos', {
@@ -318,6 +459,7 @@ StatefulAgent _agent({
   required LLMClient client,
   List<Tool>? tools,
   int maxTurns = 20,
+  AgentController? controller,
 }) {
   return StatefulAgent(
     name: 'loop',
@@ -326,6 +468,7 @@ StatefulAgent _agent({
     state: AgentState.empty(),
     tools: tools,
     maxTurns: maxTurns,
+    controller: controller,
     withGeneralPrinciples: false,
     disableSubAgents: true,
   );
