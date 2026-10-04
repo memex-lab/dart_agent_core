@@ -409,6 +409,10 @@ Map<String, dynamic> _createRequestBody(
             'type': 'input_audio',
             'input_audio': {'data': part.base64Data, 'format': format},
           });
+        } else {
+          throw Exception(
+            'Unsupported content type for model ${modelConfig.model}: ${part.runtimeType}',
+          );
         }
       }
       inputList.add({
