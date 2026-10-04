@@ -9,6 +9,7 @@
 double passCaretK(List<bool> trialPasses, int k) {
   final n = trialPasses.length;
   if (k <= 0 || n == 0) return 0.0;
+  if (k > n) return 0.0;
   final c = trialPasses.where((p) => p).length;
   if (c == 0) return 0.0;
   // (c/n)^k
