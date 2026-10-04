@@ -224,4 +224,39 @@ void main() {
       expect(terminal.usage?.thoughtToken, 2);
     },
   );
+
+  test('flushes buffered tool calls when the stream ends without finish_reason',
+      () async {
+    final chunks = <Map<String, dynamic>>[
+      {
+        'choices': [
+          {
+            'index': 0,
+            'delta': {
+              'tool_calls': [
+                {
+                  'index': 0,
+                  'id': 'call_1',
+                  'function': {
+                    'name': 'lookup',
+                    'arguments': '{"q":"dart"}',
+                  },
+                },
+              ],
+            },
+            'finish_reason': null,
+          },
+        ],
+      },
+    ];
+
+    final messages = await Stream<Map<String, dynamic>>.fromIterable(
+      chunks,
+    ).transform(OpenAIResponseTransformer(config)).toList();
+
+    expect(messages, hasLength(1));
+    expect(messages.single.stopReason, 'stop');
+    expect(messages.single.functionCalls, hasLength(1));
+    expect(messages.single.functionCalls.single.name, 'lookup');
+  });
 }

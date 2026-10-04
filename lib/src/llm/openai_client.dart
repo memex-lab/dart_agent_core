@@ -775,6 +775,13 @@ class OpenAIResponseTransformer
         usage: latestUsage,
         model: modelConfig.model,
       );
+    } else if (toolCallBuffer.isNotEmpty) {
+      yield ModelMessage(
+        stopReason: 'stop',
+        functionCalls: finalizeToolCalls(),
+        usage: latestUsage,
+        model: modelConfig.model,
+      );
     }
   }
 }
