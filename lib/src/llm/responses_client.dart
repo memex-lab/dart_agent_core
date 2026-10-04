@@ -409,6 +409,15 @@ Map<String, dynamic> _createRequestBody(
             'type': 'input_audio',
             'input_audio': {'data': part.base64Data, 'format': format},
           });
+        } else if (part is DocumentPart) {
+          final fileData = part.base64Data.startsWith('data:')
+              ? part.base64Data
+              : 'data:${part.mimeType};base64,${part.base64Data}';
+          contentList.add({
+            'type': 'input_file',
+            'filename': filenameForOpenAiFileInput(part.mimeType),
+            'file_data': fileData,
+          });
         }
       }
       inputList.add({
