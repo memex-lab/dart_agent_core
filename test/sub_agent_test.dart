@@ -55,6 +55,64 @@ void main() {
     });
   }
 
+  test('delegate_task includes content block text when textOutput is empty',
+      () async {
+    final client = _QueuedLLMClient([
+      _toolCallReply('delegate_task', {
+        'assignee': 'QA_Expert',
+        'task_description': 'Review the plan.',
+      }),
+      _textReply('parent done'),
+    ]);
+    final workerClient = _QueuedLLMClient([
+      ModelMessage(
+        model: 'fake-model',
+        stopReason: 'stop',
+        contentBlocks: [
+          {'type': 'text', 'text': 'answer from blocks'},
+        ],
+      ),
+    ]);
+    final parentState = AgentState.empty();
+    final agent = StatefulAgent(
+      name: 'manager',
+      client: client,
+      modelConfig: ModelConfig(model: 'fake-model'),
+      state: parentState,
+      withGeneralPrinciples: false,
+      subAgents: [
+        SubAgent(
+          name: 'QA_Expert',
+          description: 'Reviews work',
+          agentFactory: (parent) => StatefulAgent(
+            name: 'qa',
+            client: workerClient,
+            modelConfig: parent.modelConfig,
+            state: AgentState(
+              sessionId: 'worker-blocks',
+              metadata: {'sub_agent_mode': true},
+            ),
+            withGeneralPrinciples: false,
+            disableSubAgents: true,
+            isSubAgent: true,
+          ),
+        ),
+      ],
+    );
+
+    await agent.run([UserMessage.text('delegate')], useStream: false);
+
+    final result = parentState.history.messages
+        .whereType<FunctionExecutionResultMessage>()
+        .single
+        .results
+        .single;
+    expect(
+      (result.content.single as TextPart).text,
+      contains('answer from blocks'),
+    );
+  });
+
   test('named sub-agent runs and returns the worker text', () async {
     final client = _QueuedLLMClient([
       _toolCallReply('delegate_task', {

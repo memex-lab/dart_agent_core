@@ -4,6 +4,18 @@ import 'package:logging/logging.dart';
 
 final _subAgentLogger = Logger('SubAgent');
 
+String _subAgentResultText(ModelMessage message) {
+  final text = message.textOutput?.trim();
+  if (text != null && text.isNotEmpty) return text;
+  final thought = message.thought?.trim();
+  if (thought != null && thought.isNotEmpty) return thought;
+  for (final block in message.contentBlocks) {
+    final blockText = block['text']?.toString().trim();
+    if (blockText != null && blockText.isNotEmpty) return blockText;
+  }
+  return '';
+}
+
 class SubAgent {
   final String name;
   final String description;
@@ -160,9 +172,10 @@ You are currently running as a delegated **Sub-Agent** (Worker).
         },
       );
     }
+    final resultText = _subAgentResultText(lastMessage);
     return AgentToolResult(
       content: TextPart(
-        "Sub-agent ($assignee) execution result:\n\n${lastMessage.textOutput}",
+        "Sub-agent ($assignee) execution result:\n\n$resultText",
       ),
       metadata: {
         "sub_agent_session_id": workerAgent.state.sessionId,
