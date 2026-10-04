@@ -36,6 +36,8 @@ Uses the newer OpenAI Responses API. The `LLMClient` interface (`generate` / `st
 
 `ResponsesClient` also provides a `checkResponseId(responseId)` method to verify whether a stored response ID is still valid on the server.
 
+When chaining with `previous_response_id`, pass `tools` (and `tool_choice` if needed) on every call. The Responses API does not carry tool definitions forward from earlier responses in the chain.
+
 ```dart
 final client = ResponsesClient(
   apiKey: Platform.environment['OPENAI_API_KEY'] ?? '',

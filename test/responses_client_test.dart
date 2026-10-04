@@ -28,16 +28,31 @@ void main() {
           client: Dio()..httpClientAdapter = adapter,
         );
 
-        final result = await client.generate([
-          UserMessage.text('first'),
-          ModelMessage(
-            model: 'gpt-test',
-            textOutput: 'ack',
-            responseId: 'resp_1',
-            stopReason: 'completed',
-          ),
-          UserMessage.text('second'),
-        ], modelConfig: ModelConfig(model: 'gpt-test'));
+        final result = await client.generate(
+          [
+            UserMessage.text('first'),
+            ModelMessage(
+              model: 'gpt-test',
+              textOutput: 'ack',
+              responseId: 'resp_1',
+              stopReason: 'completed',
+            ),
+            UserMessage.text('second'),
+          ],
+          tools: [
+            Tool(
+              name: 'get_weather',
+              description: 'Weather',
+              parameters: {
+                'type': 'object',
+                'properties': {
+                  'city': {'type': 'string'},
+                },
+              },
+            ),
+          ],
+          modelConfig: ModelConfig(model: 'gpt-test'),
+        );
 
         expect(result.textOutput, 'follow-up');
         expect(result.responseId, 'resp_2');
@@ -47,6 +62,9 @@ void main() {
         expect(input, hasLength(1));
         expect(input.single['role'], 'user');
         expect(input.single['content'].single['text'], 'second');
+        expect(body.containsKey('tools'), isTrue);
+        expect(body['tools'], hasLength(1));
+        expect(body['tools'][0]['name'], 'get_weather');
       },
     );
 
