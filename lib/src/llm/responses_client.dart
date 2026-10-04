@@ -371,6 +371,14 @@ Map<String, dynamic> _createRequestBody(
     }
   }
 
+  // Explicit previous_response_id with no matching ModelMessage but local assistant
+  // history would send duplicate context (full input plus server chain).
+  if (previousResponseId != null &&
+      cutoffIndex == -1 &&
+      messages.any((m) => m is ModelMessage)) {
+    previousResponseId = null;
+  }
+
   // 2. Collect pending messages (those after the cutoff)
   // If no previousResponseId found, we take all messages.
   // If found, we take messages physically after that index.
