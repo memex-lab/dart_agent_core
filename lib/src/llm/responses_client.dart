@@ -418,6 +418,10 @@ Map<String, dynamic> _createRequestBody(
             'filename': filenameForOpenAiFileInput(part.mimeType),
             'file_data': fileData,
           });
+        } else {
+          throw Exception(
+            'Unsupported content type for model ${modelConfig.model}: ${part.runtimeType}',
+          );
         }
       }
       inputList.add({

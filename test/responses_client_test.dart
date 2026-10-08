@@ -143,6 +143,42 @@ void main() {
       },
     );
 
+    test('throws on unsupported user content parts', () async {
+      final adapter = _CaptureAdapter([
+        (_) => _jsonResponse({
+          'id': 'resp_x',
+          'status': 'completed',
+          'output': [
+            {
+              'type': 'message',
+              'content': [
+                {'type': 'output_text', 'text': 'ok'},
+              ],
+            },
+          ],
+        }),
+      ]);
+      final client = ResponsesClient(
+        apiKey: 'test-key',
+        client: Dio()..httpClientAdapter = adapter,
+      );
+
+      await expectLater(
+        client.generate(
+          [UserMessage([VideoPart('abc', 'video/mp4')])],
+          modelConfig: ModelConfig(model: 'gpt-test'),
+        ),
+        throwsA(
+          predicate(
+            (e) =>
+                e is Exception &&
+                e.toString().contains('Unsupported content type'),
+          ),
+        ),
+      );
+      expect(adapter.bodies, isEmpty);
+    });
+
     test('checkResponseId returns true on 200 and false on 404', () async {
       final adapter = _CaptureAdapter([
         (options) {
