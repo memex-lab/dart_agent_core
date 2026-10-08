@@ -511,8 +511,9 @@ Map<String, dynamic> _createRequestBody(
     body['previous_response_id'] = previousResponseId;
   }
 
-  // Tools logic (unchanged essentially, just verifying placement)
-  if (tools != null && tools.isNotEmpty && previousResponseId == null) {
+  // Tools are not retained server-side when chaining with previous_response_id;
+  // send the tool list on every request (OpenAI Responses API).
+  if (tools != null && tools.isNotEmpty) {
     body['tools'] = tools
         .map(
           (t) => {
