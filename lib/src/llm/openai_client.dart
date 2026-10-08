@@ -317,7 +317,7 @@ Map<String, dynamic> _createRequestBody(
               return {
                 'type': 'file',
                 'file': {
-                  'filename': _filenameForMimeType(part.mimeType),
+                  'filename': filenameForOpenAiFileInput(part.mimeType),
                   'file_data': fileData,
                 },
               };
@@ -449,42 +449,6 @@ Map<String, dynamic> _createRequestBody(
   }
 
   return body;
-}
-
-/// Sensible download name for OpenAI `file` content parts from a MIME type.
-String _filenameForMimeType(String mimeType) {
-  final mime = mimeType.toLowerCase().split(';').first.trim();
-  switch (mime) {
-    case 'application/pdf':
-      return 'document.pdf';
-    case 'text/plain':
-      return 'document.txt';
-    case 'text/csv':
-    case 'application/csv':
-      return 'document.csv';
-    case 'application/json':
-      return 'document.json';
-    case 'text/html':
-      return 'document.html';
-    case 'text/markdown':
-      return 'document.md';
-    case 'application/msword':
-      return 'document.doc';
-    case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-      return 'document.docx';
-    case 'application/vnd.ms-excel':
-      return 'document.xls';
-    case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
-      return 'document.xlsx';
-    default:
-      final slash = mime.indexOf('/');
-      final subtype = slash >= 0 ? mime.substring(slash + 1) : mime;
-      final ext = subtype.contains('+') ? subtype.split('+').last : subtype;
-      if (ext.isNotEmpty && RegExp(r'^[a-z0-9]{1,8}$').hasMatch(ext)) {
-        return 'document.$ext';
-      }
-      return 'document.bin';
-  }
 }
 
 ModelMessage _parseResponse(
