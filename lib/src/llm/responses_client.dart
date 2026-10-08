@@ -409,6 +409,19 @@ Map<String, dynamic> _createRequestBody(
             'type': 'input_audio',
             'input_audio': {'data': part.base64Data, 'format': format},
           });
+        } else if (part is DocumentPart) {
+          final fileData = part.base64Data.startsWith('data:')
+              ? part.base64Data
+              : 'data:${part.mimeType};base64,${part.base64Data}';
+          contentList.add({
+            'type': 'input_file',
+            'filename': filenameForOpenAiFileInput(part.mimeType),
+            'file_data': fileData,
+          });
+        } else {
+          throw Exception(
+            'Unsupported content type for model ${modelConfig.model}: ${part.runtimeType}',
+          );
         }
       }
       inputList.add({
@@ -502,8 +515,9 @@ Map<String, dynamic> _createRequestBody(
     body['previous_response_id'] = previousResponseId;
   }
 
-  // Tools logic (unchanged essentially, just verifying placement)
-  if (tools != null && tools.isNotEmpty && previousResponseId == null) {
+  // Tools are not retained server-side when chaining with previous_response_id;
+  // send the tool list on every request (OpenAI Responses API).
+  if (tools != null && tools.isNotEmpty) {
     body['tools'] = tools
         .map(
           (t) => {
