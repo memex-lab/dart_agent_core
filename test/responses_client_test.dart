@@ -87,6 +87,44 @@ void main() {
       expect(body['input'], hasLength(3));
     });
 
+    test(
+      'encodes DocumentPart as input_file with data-URI file_data',
+      () async {
+        final adapter = _CaptureAdapter([
+          (_) => _jsonResponse({
+            'id': 'resp_doc',
+            'status': 'completed',
+            'output': [
+              {
+                'type': 'message',
+                'content': [
+                  {'type': 'output_text', 'text': 'summarized'},
+                ],
+              },
+            ],
+          }),
+        ]);
+        final client = ResponsesClient(
+          apiKey: 'test-key',
+          client: Dio()..httpClientAdapter = adapter,
+        );
+
+        await client.generate([
+          UserMessage([DocumentPart('JVBERi0xLjQ=', 'application/pdf')]),
+        ], modelConfig: ModelConfig(model: 'gpt-test'));
+
+        final body = adapter.bodies.single as Map<String, dynamic>;
+        final content =
+            (body['input'][0] as Map<String, dynamic>)['content'] as List;
+        expect(content[0]['type'], 'input_file');
+        expect(content[0]['filename'], 'document.pdf');
+        expect(
+          content[0]['file_data'],
+          'data:application/pdf;base64,JVBERi0xLjQ=',
+        );
+      },
+    );
+
     test('checkResponseId returns true on 200 and false on 404', () async {
       final adapter = _CaptureAdapter([
         (options) {

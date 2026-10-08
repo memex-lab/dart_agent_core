@@ -36,6 +36,8 @@ Uses the newer OpenAI Responses API. The `LLMClient` interface (`generate` / `st
 
 `ResponsesClient` also provides a `checkResponseId(responseId)` method to verify whether a stored response ID is still valid on the server.
 
+User messages can include `DocumentPart` content; the client maps them to Responses API `input_file` items (data-URI `file_data` and a MIME-derived filename), matching the encoding used for Chat Completions file parts.
+
 ```dart
 final client = ResponsesClient(
   apiKey: Platform.environment['OPENAI_API_KEY'] ?? '',
