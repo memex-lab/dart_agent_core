@@ -7,12 +7,20 @@ final _subAgentLogger = Logger('SubAgent');
 String _subAgentResultText(ModelMessage message) {
   final text = message.textOutput?.trim();
   if (text != null && text.isNotEmpty) return text;
+
+  final answerBlocks = <String>[];
+  for (final block in message.contentBlocks) {
+    final type = block['type']?.toString();
+    if (type != null && type != 'text' && type != 'output_text') continue;
+    final blockText = block['text']?.toString() ?? '';
+    if (blockText.trim().isEmpty) continue;
+    answerBlocks.add(blockText);
+  }
+  if (answerBlocks.isNotEmpty) return answerBlocks.join('').trim();
+
   final thought = message.thought?.trim();
   if (thought != null && thought.isNotEmpty) return thought;
-  for (final block in message.contentBlocks) {
-    final blockText = block['text']?.toString().trim();
-    if (blockText != null && blockText.isNotEmpty) return blockText;
-  }
+
   return '';
 }
 
