@@ -1,0 +1,42 @@
+Subject: dart_agent_core 上几个 open PR，方便的话帮忙 review 一下（o-mid）
+
+sparkleMing 你好，
+
+我是 Omid（GitHub @o-mid）。memex-lab/dart_agent_core 上有一批我的 PR 还没 review，GitHub 上每条我也 @ 你了。本地都跑过 `dart analyze .` 和完整 `dart test`。
+
+Open PRs:
+
+#68 — Gemini 同一 turn 里并行 tool call 共享 id
+https://github.com/memex-lab/dart_agent_core/pull/68
+
+#69 — Responses：DocumentPart → input_file
+https://github.com/memex-lab/dart_agent_core/pull/69
+
+#70 — Responses：chained 请求每次都带 tools
+https://github.com/memex-lab/dart_agent_core/pull/70
+
+#71 — Responses：去掉未锚定的 previous_response_id
+https://github.com/memex-lab/dart_agent_core/pull/71
+
+#72 — Responses：不支持的 user content 直接报错
+https://github.com/memex-lab/dart_agent_core/pull/72
+
+#73 — eval：k 大于 trial 数时 pass^k 返回 0
+https://github.com/memex-lab/dart_agent_core/pull/73
+
+#74 — OpenAI：stream 异常结束时 flush tool calls
+https://github.com/memex-lab/dart_agent_core/pull/74
+
+#75 — agent：delegate_task 结果带上 content block 文本
+https://github.com/memex-lab/dart_agent_core/pull/75
+
+Responses 那几条建议合并顺序 69 → 70 → 71 → 72。其它几条互相独立。
+
+仓库里还有别人开的 #67（README 版本号），不是我提交的。
+
+需要 rebase 或拆 PR 的话直接说就行。
+
+谢谢，
+Omid Mirzaei
+omidomirzaei@gmail.com
+https://github.com/o-mid

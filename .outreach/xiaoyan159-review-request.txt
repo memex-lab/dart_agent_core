@@ -1,0 +1,22 @@
+Subject: dart_agent_core — several open PRs, review if you have bandwidth
+
+Hi,
+
+I'm Omid (@o-mid). I've been contributing fixes to memex-lab/dart_agent_core and have eight PRs waiting on review. sparkleMing has merged my earlier work; I'm emailing you as well since you've shipped MCP-related changes on the repo and some of my agent/runtime patches may overlap with areas you care about.
+
+No pressure — only if you have time:
+
+https://github.com/memex-lab/dart_agent_core/pull/68 — parallel Gemini tool call ids
+https://github.com/memex-lab/dart_agent_core/pull/69 — Responses DocumentPart
+https://github.com/memex-lab/dart_agent_core/pull/70 — Responses tools on chained turns
+https://github.com/memex-lab/dart_agent_core/pull/71 — Responses previous_response_id guard
+https://github.com/memex-lab/dart_agent_core/pull/72 — Responses unsupported content parts
+https://github.com/memex-lab/dart_agent_core/pull/73 — eval pass^k edge case
+https://github.com/memex-lab/dart_agent_core/pull/74 — OpenAI stream tool-call flush
+https://github.com/memex-lab/dart_agent_core/pull/75 — delegate_task content blocks
+
+All green locally on `dart analyze .` and `dart test`.
+
+Thanks,
+Omid
+omidomirzaei@gmail.com
