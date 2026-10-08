@@ -550,6 +550,25 @@ class OpenAIChunkDecoder
   }
 }
 
+bool _openAiStreamToolCallStarted(Map<String, dynamic> buffer) {
+  final id = buffer['id'] as String;
+  final name = buffer['name'] as String;
+  final arguments = buffer['arguments'] as String;
+  return id.isNotEmpty || name.isNotEmpty || arguments.isNotEmpty;
+}
+
+bool _openAiStreamToolCallComplete(Map<String, dynamic> buffer) {
+  final id = buffer['id'] as String;
+  final name = buffer['name'] as String;
+  final arguments = buffer['arguments'] as String;
+  if (id.isEmpty || name.isEmpty || arguments.isEmpty) return false;
+  try {
+    return jsonDecode(arguments) is Map;
+  } catch (_) {
+    return false;
+  }
+}
+
 class OpenAIResponseTransformer
     extends StreamTransformerBase<Map<String, dynamic>, ModelMessage> {
   final ModelConfig modelConfig;
@@ -562,44 +581,67 @@ class OpenAIResponseTransformer
     String? pendingFinishReason;
     ModelUsage? latestUsage;
 
-    List<FunctionCall> finalizeToolCalls({bool onlyComplete = false}) {
+    List<FunctionCall> finalizeToolCalls() {
       List<FunctionCall> finalFunctionCalls = [];
       if (toolCallBuffer.isNotEmpty) {
         final sortedIndices = toolCallBuffer.keys.toList()..sort();
         for (final index in sortedIndices) {
           final b = toolCallBuffer[index]!;
           try {
-            final id = b['id'] as String;
-            final name = b['name'] as String;
-            var arguments = b['arguments'] as String;
-            if (id.isEmpty || name.isEmpty) {
-              if (onlyComplete) continue;
+            if ((b['name'] as String).isNotEmpty ||
+                (b['arguments'] as String).isNotEmpty ||
+                (b['id'] as String).isNotEmpty) {
+              var arguments = b['arguments'] as String;
+              if (arguments.isEmpty) {
+                arguments = '{}';
+              }
+              finalFunctionCalls.add(
+                FunctionCall(
+                  id: b['id'],
+                  name: b['name'],
+                  arguments: arguments,
+                ),
+              );
             }
-            if (arguments.isEmpty) {
-              if (onlyComplete) continue;
-              arguments = '{}';
-            } else if (onlyComplete) {
-              final decoded = jsonDecode(arguments);
-              if (decoded is! Map) continue;
-            }
-            if (!onlyComplete &&
-                name.isEmpty &&
-                arguments == '{}' &&
-                id.isEmpty) {
-              continue;
-            }
-            finalFunctionCalls.add(
-              FunctionCall(id: id, name: name, arguments: arguments),
-            );
           } catch (e) {
-            if (!onlyComplete) {
-              // Ignore invalid JSON on normal completion paths.
-            }
+            // Ignore invalid JSON
           }
         }
         toolCallBuffer.clear();
       }
       return finalFunctionCalls;
+    }
+
+    /// Abrupt stream end: emit tool calls only if every started buffer entry
+    /// is complete. Never emit a subset when one parallel call is truncated.
+    List<FunctionCall>? finalizeAbruptStreamToolCalls() {
+      if (toolCallBuffer.isEmpty) return null;
+      final started = toolCallBuffer.values
+          .where(_openAiStreamToolCallStarted)
+          .toList();
+      if (started.isEmpty) {
+        toolCallBuffer.clear();
+        return null;
+      }
+      if (!started.every(_openAiStreamToolCallComplete)) {
+        toolCallBuffer.clear();
+        return null;
+      }
+      final sortedIndices = toolCallBuffer.keys.toList()..sort();
+      final calls = <FunctionCall>[];
+      for (final index in sortedIndices) {
+        final b = toolCallBuffer[index]!;
+        if (!_openAiStreamToolCallStarted(b)) continue;
+        calls.add(
+          FunctionCall(
+            id: b['id'] as String,
+            name: b['name'] as String,
+            arguments: b['arguments'] as String,
+          ),
+        );
+      }
+      toolCallBuffer.clear();
+      return calls;
     }
 
     await for (final data in stream) {
@@ -749,8 +791,8 @@ class OpenAIResponseTransformer
         model: modelConfig.model,
       );
     } else if (toolCallBuffer.isNotEmpty) {
-      final functionCalls = finalizeToolCalls(onlyComplete: true);
-      if (functionCalls.isNotEmpty) {
+      final functionCalls = finalizeAbruptStreamToolCalls();
+      if (functionCalls != null && functionCalls.isNotEmpty) {
         yield ModelMessage(
           stopReason: 'stop',
           functionCalls: functionCalls,
