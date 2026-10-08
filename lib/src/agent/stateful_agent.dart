@@ -195,7 +195,7 @@ class _ModelMessageAccumulator {
   ModelMessage toModelMessage(String model) {
     return ModelMessage(
       textOutput: _text.isNotEmpty ? _text.toString() : null,
-      functionCalls: _withUniqueFunctionCallIds(_functionCalls),
+      functionCalls: _functionCalls,
       contentBlocks: _contentBlocks,
       imageOutputs: _imageOutputs,
       videoOutputs: _videoOutputs,
@@ -209,38 +209,6 @@ class _ModelMessageAccumulator {
       responseId: responseId,
     );
   }
-}
-
-/// Tool results are stored in a map keyed by [FunctionCall.id]. Stream chunks
-/// and providers that omit ids can repeat the same id in one turn; keep the
-/// first and suffix the rest so both calls are executed and echoed back.
-List<FunctionCall> _withUniqueFunctionCallIds(List<FunctionCall> calls) {
-  if (calls.length < 2) return calls;
-  final used = <String>{};
-  final unique = <FunctionCall>[];
-  var changed = false;
-  for (final call in calls) {
-    final id = _uniqueFunctionCallId(call.id, used);
-    if (id == call.id) {
-      unique.add(call);
-    } else {
-      changed = true;
-      unique.add(
-        FunctionCall(id: id, name: call.name, arguments: call.arguments),
-      );
-    }
-  }
-  return changed ? unique : calls;
-}
-
-String _uniqueFunctionCallId(String id, Set<String> used) {
-  if (used.add(id)) return id;
-  final base = id.isEmpty ? 'call' : id;
-  var n = 2;
-  while (!used.add('$base#$n')) {
-    n++;
-  }
-  return '$base#$n';
 }
 
 class ToolsHistoryItem {

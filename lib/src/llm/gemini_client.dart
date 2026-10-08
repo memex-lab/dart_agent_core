@@ -8,8 +8,10 @@ import '../core/message.dart';
 import '../core/tool.dart';
 import 'llm_request_util.dart';
 import 'package:logging/logging.dart';
+import 'package:uuid/uuid.dart';
 
 final Logger _geminiLogger = Logger('GeminiClient');
+const _geminiFunctionCallIdGenerator = Uuid();
 
 class GeminiClient extends LLMClient {
   final String _apiKey;
@@ -99,7 +101,11 @@ class GeminiClient extends LLMClient {
           // Check for retry conditions on 200 OK
           bool shouldRetry = false;
           String retryReason = '';
-          final modelMessage = _parseResponse(response.data, modelConfig);
+          final modelMessage = _parseResponse(
+            response.data,
+            modelConfig,
+            usedFunctionCallIds: <String>{},
+          );
           if (modelMessage == null) {
             shouldRetry = true;
             retryReason = 'Gemini returned no candidates';
@@ -244,11 +250,18 @@ class GeminiClient extends LLMClient {
           }
 
           final stream = (response.data.stream as Stream).cast<List<int>>();
+          final usedFunctionCallIds = <String>{};
           final transformedStream = stream
               .transform(utf8.decoder)
               .transform(const LineSplitter())
               .transform(GeminiChunkDecoder())
-              .map((data) => _parseResponse(data, modelConfig));
+              .map(
+                (data) => _parseResponse(
+                  data,
+                  modelConfig,
+                  usedFunctionCallIds: usedFunctionCallIds,
+                ),
+              );
 
           bool retryNeeded = false;
           String? stopReason;
@@ -523,28 +536,27 @@ Map<String, dynamic> _createRequestBody(
   return body;
 }
 
-/// Gemini omits `functionCall.id` on some responses. Falling back to the
-/// tool name collides when the model calls that tool twice in one turn, and
-/// the agent loop indexes results by id. Keep the first id (the name, when
-/// none was sent) and suffix later duplicates.
+/// Provider ids are kept as-is. Missing ids get a synthetic uuid so parallel
+/// calls in one turn (or across stream chunks) do not collide in the agent loop.
 String _geminiFunctionCallId({
   required String? rawId,
-  required String name,
   required Set<String> used,
 }) {
-  final base = (rawId == null || rawId.isEmpty) ? name : rawId;
-  if (used.add(base)) return base;
-  var n = 2;
-  while (!used.add('$base#$n')) {
-    n++;
+  if (rawId != null && rawId.isNotEmpty) {
+    used.add(rawId);
+    return rawId;
   }
-  return '$base#$n';
+  while (true) {
+    final id = _geminiFunctionCallIdGenerator.v4();
+    if (used.add(id)) return id;
+  }
 }
 
 ModelMessage? _parseResponse(
   Map<String, dynamic> data,
-  ModelConfig modelConfig,
-) {
+  ModelConfig modelConfig, {
+  required Set<String> usedFunctionCallIds,
+}) {
   try {
     final candidates = data['candidates'] as List? ?? [];
     if (candidates.isEmpty) {
@@ -557,7 +569,6 @@ ModelMessage? _parseResponse(
 
     String? textOutput;
     List<FunctionCall> functionCalls = [];
-    final usedFunctionCallIds = <String>{};
     String? thoughtSignature;
     String? thought;
 
@@ -574,11 +585,7 @@ ModelMessage? _parseResponse(
         final id = fc['id']?.toString();
         functionCalls.add(
           FunctionCall(
-            id: _geminiFunctionCallId(
-              rawId: id,
-              name: name,
-              used: usedFunctionCallIds,
-            ),
+            id: _geminiFunctionCallId(rawId: id, used: usedFunctionCallIds),
             name: name,
             arguments: jsonEncode(fc['args'] ?? {}),
           ),
