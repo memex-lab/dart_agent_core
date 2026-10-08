@@ -562,30 +562,39 @@ class OpenAIResponseTransformer
     String? pendingFinishReason;
     ModelUsage? latestUsage;
 
-    List<FunctionCall> finalizeToolCalls() {
+    List<FunctionCall> finalizeToolCalls({bool onlyComplete = false}) {
       List<FunctionCall> finalFunctionCalls = [];
       if (toolCallBuffer.isNotEmpty) {
         final sortedIndices = toolCallBuffer.keys.toList()..sort();
         for (final index in sortedIndices) {
           final b = toolCallBuffer[index]!;
           try {
-            if ((b['name'] as String).isNotEmpty ||
-                (b['arguments'] as String).isNotEmpty ||
-                (b['id'] as String).isNotEmpty) {
-              var arguments = b['arguments'] as String;
-              if (arguments.isEmpty) {
-                arguments = '{}';
-              }
-              finalFunctionCalls.add(
-                FunctionCall(
-                  id: b['id'],
-                  name: b['name'],
-                  arguments: arguments,
-                ),
-              );
+            final id = b['id'] as String;
+            final name = b['name'] as String;
+            var arguments = b['arguments'] as String;
+            if (id.isEmpty || name.isEmpty) {
+              if (onlyComplete) continue;
             }
+            if (arguments.isEmpty) {
+              if (onlyComplete) continue;
+              arguments = '{}';
+            } else if (onlyComplete) {
+              final decoded = jsonDecode(arguments);
+              if (decoded is! Map) continue;
+            }
+            if (!onlyComplete &&
+                name.isEmpty &&
+                arguments == '{}' &&
+                id.isEmpty) {
+              continue;
+            }
+            finalFunctionCalls.add(
+              FunctionCall(id: id, name: name, arguments: arguments),
+            );
           } catch (e) {
-            // Ignore invalid JSON
+            if (!onlyComplete) {
+              // Ignore invalid JSON on normal completion paths.
+            }
           }
         }
         toolCallBuffer.clear();
@@ -740,12 +749,15 @@ class OpenAIResponseTransformer
         model: modelConfig.model,
       );
     } else if (toolCallBuffer.isNotEmpty) {
-      yield ModelMessage(
-        stopReason: 'stop',
-        functionCalls: finalizeToolCalls(),
-        usage: latestUsage,
-        model: modelConfig.model,
-      );
+      final functionCalls = finalizeToolCalls(onlyComplete: true);
+      if (functionCalls.isNotEmpty) {
+        yield ModelMessage(
+          stopReason: 'stop',
+          functionCalls: functionCalls,
+          usage: latestUsage,
+          model: modelConfig.model,
+        );
+      }
     }
   }
 }
