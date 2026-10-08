@@ -576,6 +576,7 @@ StatefulAgent _agent({
 
 class _QueuedLLMClient extends LLMClient {
   final List<ModelMessage> replies;
+  final List<List<LLMMessage>> seenMessages = [];
   int generateCalls = 0;
 
   _QueuedLLMClient(this.replies);
@@ -592,6 +593,7 @@ class _QueuedLLMClient extends LLMClient {
     if (generateCalls >= replies.length) {
       throw StateError('Unexpected extra generate() call');
     }
+    seenMessages.add(messages);
     return replies[generateCalls++];
   }
 
