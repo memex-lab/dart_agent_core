@@ -1,3 +1,18 @@
+## 2.1.7
+
+### LLM clients
+
+- Generate unique IDs for Gemini function calls that omit provider IDs, including across streaming chunks, while preserving supplied IDs. (#68)
+- Support `DocumentPart` in Responses API requests using `input_file` items and share MIME-derived filenames with Chat Completions. (#69)
+- Send tool definitions and tool-choice settings on every Responses API continuation request. (#70)
+- Add regression coverage preserving explicitly supplied `previous_response_id` values with incremental input and unmatched local history. (#71)
+- Reject unsupported Responses API user content instead of silently dropping it. (#72)
+- Recover complete buffered OpenAI-compatible tool calls when a stream ends without `finish_reason`; leave incomplete batches unfinished so the agent can retry without executing a partial batch. (#74)
+
+### Agent runtime
+
+- Include all answer text blocks in delegated sub-agent results when `textOutput` is empty, preferring answer content over thought text. (#75)
+
 ## 2.1.6
 
 ### Agent runtime
