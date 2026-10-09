@@ -224,4 +224,185 @@ void main() {
       expect(terminal.usage?.thoughtToken, 2);
     },
   );
+
+  test('flushes buffered tool calls when the stream ends without finish_reason',
+      () async {
+    final chunks = <Map<String, dynamic>>[
+      {
+        'choices': [
+          {
+            'index': 0,
+            'delta': {
+              'tool_calls': [
+                {
+                  'index': 0,
+                  'id': 'call_1',
+                  'function': {
+                    'name': 'lookup',
+                    'arguments': '{"q":"dart"}',
+                  },
+                },
+              ],
+            },
+            'finish_reason': null,
+          },
+        ],
+      },
+    ];
+
+    final messages = await Stream<Map<String, dynamic>>.fromIterable(
+      chunks,
+    ).transform(OpenAIResponseTransformer(config)).toList();
+
+    expect(messages, hasLength(1));
+    expect(messages.single.stopReason, 'stop');
+    expect(messages.single.functionCalls, hasLength(1));
+    expect(messages.single.functionCalls.single.name, 'lookup');
+  });
+
+  test('does not flush header-only tool calls when the stream ends abruptly',
+      () async {
+    final chunks = <Map<String, dynamic>>[
+      {
+        'choices': [
+          {
+            'index': 0,
+            'delta': {
+              'tool_calls': [
+                {
+                  'index': 0,
+                  'id': 'call_1',
+                  'function': {'name': 'lookup', 'arguments': ''},
+                },
+              ],
+            },
+            'finish_reason': null,
+          },
+        ],
+      },
+    ];
+
+    final messages = await Stream<Map<String, dynamic>>.fromIterable(
+      chunks,
+    ).transform(OpenAIResponseTransformer(config)).toList();
+
+    expect(messages, isEmpty);
+  });
+
+  test('does not flush partial tool-call JSON when the stream ends abruptly',
+      () async {
+    final chunks = <Map<String, dynamic>>[
+      {
+        'choices': [
+          {
+            'index': 0,
+            'delta': {
+              'tool_calls': [
+                {
+                  'index': 0,
+                  'id': 'call_1',
+                  'function': {
+                    'name': 'lookup',
+                    'arguments': '{"q":"dar',
+                  },
+                },
+              ],
+            },
+            'finish_reason': null,
+          },
+        ],
+      },
+    ];
+
+    final messages = await Stream<Map<String, dynamic>>.fromIterable(
+      chunks,
+    ).transform(OpenAIResponseTransformer(config)).toList();
+
+    expect(messages, isEmpty);
+  });
+
+  test(
+    'flushes every complete parallel tool call when the stream ends abruptly',
+    () async {
+      final chunks = <Map<String, dynamic>>[
+        {
+          'choices': [
+            {
+              'index': 0,
+              'delta': {
+                'tool_calls': [
+                  {
+                    'index': 0,
+                    'id': 'call_1',
+                    'function': {
+                      'name': 'lookup',
+                      'arguments': '{"q":"a"}',
+                    },
+                  },
+                  {
+                    'index': 1,
+                    'id': 'call_2',
+                    'function': {
+                      'name': 'lookup',
+                      'arguments': '{"q":"b"}',
+                    },
+                  },
+                ],
+              },
+              'finish_reason': null,
+            },
+          ],
+        },
+      ];
+
+      final messages = await Stream<Map<String, dynamic>>.fromIterable(
+        chunks,
+      ).transform(OpenAIResponseTransformer(config)).toList();
+
+      expect(messages, hasLength(1));
+      expect(messages.single.functionCalls, hasLength(2));
+    },
+  );
+
+  test(
+    'does not flush a mixed complete and truncated batch on abrupt stream end',
+    () async {
+      final chunks = <Map<String, dynamic>>[
+        {
+          'choices': [
+            {
+              'index': 0,
+              'delta': {
+                'tool_calls': [
+                  {
+                    'index': 0,
+                    'id': 'call_1',
+                    'function': {
+                      'name': 'lookup',
+                      'arguments': '{"q":"a"}',
+                    },
+                  },
+                  {
+                    'index': 1,
+                    'id': 'call_2',
+                    'function': {
+                      'name': 'lookup',
+                      'arguments': '{"q":"b',
+                    },
+                  },
+                ],
+              },
+              'finish_reason': null,
+            },
+          ],
+        },
+      ];
+
+      final messages = await Stream<Map<String, dynamic>>.fromIterable(
+        chunks,
+      ).transform(OpenAIResponseTransformer(config)).toList();
+
+      expect(messages, isEmpty);
+    },
+  );
 }
