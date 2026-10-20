@@ -32,6 +32,15 @@ class ClaudeClient extends LLMClient {
   final int initialRetryDelayMs;
   final int maxRetryDelayMs;
 
+  /// Whether to send the top-level `cache_control` field (Anthropic's
+  /// automatic prompt caching) with every request.
+  ///
+  /// When `null` (default), caching is enabled only for the official
+  /// Anthropic endpoint (`api.anthropic.com`). Anthropic-compatible third-party
+  /// endpoints (e.g. MiniMax, MiMo) may reject unknown request fields, so they
+  /// stay unchanged unless this is set to `true` explicitly.
+  final bool? enablePromptCaching;
+
   ClaudeClient({
     required String apiKey,
     this.baseUrl = 'https://api.anthropic.com',
@@ -42,10 +51,14 @@ class ClaudeClient extends LLMClient {
     this.maxRetries = 3,
     this.initialRetryDelayMs = 1000,
     this.maxRetryDelayMs = 10000,
+    this.enablePromptCaching,
   }) : _apiKey = apiKey,
        _client = client ?? Dio() {
     configureProxy(_client, proxyUrl);
   }
+
+  bool get _promptCachingEnabled =>
+      enablePromptCaching ?? Uri.tryParse(baseUrl)?.host == 'api.anthropic.com';
 
   Map<String, String> get _headers => {
     'x-api-key': _apiKey,
@@ -426,6 +439,13 @@ class ClaudeClient extends LLMClient {
         'Claude typically requires a JSON schema for structured output. '
         'Pass output_config in modelConfig.extra.',
       );
+    }
+
+    // Automatic prompt caching: the breakpoint follows the last cacheable
+    // block as the conversation grows, so repeated tools/system/messages
+    // prefixes are read from the cache instead of being billed in full.
+    if (_promptCachingEnabled) {
+      body['cache_control'] = {'type': 'ephemeral'};
     }
 
     return body;

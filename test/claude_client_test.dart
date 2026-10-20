@@ -273,6 +273,67 @@ void main() {
       expect(body['tools'], isNotEmpty);
       expect(body['tool_choice'], {'type': 'none'});
     });
+
+    group('automatic prompt caching', () {
+      Future<Map<String, dynamic>> sendAndCaptureBody(
+        ClaudeClient Function(Dio dio) build,
+      ) async {
+        final adapter = _CaptureAdapter([
+          (_) => _jsonResponse({
+            'content': [
+              {'type': 'text', 'text': 'ok'},
+            ],
+            'stop_reason': 'end_turn',
+            'usage': {'input_tokens': 1, 'output_tokens': 1},
+          }),
+        ]);
+        final client = build(Dio()..httpClientAdapter = adapter);
+        await client.generate([
+          UserMessage.text('hello'),
+        ], modelConfig: ModelConfig(model: 'claude-test'));
+        return jsonDecode(adapter.requests.single as String)
+            as Map<String, dynamic>;
+      }
+
+      test('Anthropic endpoint sends top-level cache_control', () async {
+        final body = await sendAndCaptureBody(
+          (dio) => ClaudeClient(apiKey: 'test-key', client: dio),
+        );
+        expect(body['cache_control'], {'type': 'ephemeral'});
+      });
+
+      test('third-party endpoint does not send cache_control', () async {
+        final body = await sendAndCaptureBody(
+          (dio) => ClaudeClient(
+            apiKey: 'test-key',
+            baseUrl: 'https://api.minimaxi.com/anthropic',
+            client: dio,
+          ),
+        );
+        expect(body.containsKey('cache_control'), isFalse);
+      });
+
+      test('enablePromptCaching overrides the endpoint default', () async {
+        final disabled = await sendAndCaptureBody(
+          (dio) => ClaudeClient(
+            apiKey: 'test-key',
+            enablePromptCaching: false,
+            client: dio,
+          ),
+        );
+        expect(disabled.containsKey('cache_control'), isFalse);
+
+        final enabled = await sendAndCaptureBody(
+          (dio) => ClaudeClient(
+            apiKey: 'test-key',
+            baseUrl: 'https://api.minimaxi.com/anthropic',
+            enablePromptCaching: true,
+            client: dio,
+          ),
+        );
+        expect(enabled['cache_control'], {'type': 'ephemeral'});
+      });
+    });
   });
 }
 
