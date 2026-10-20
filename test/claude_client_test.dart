@@ -6,6 +6,175 @@ import 'package:test/test.dart';
 
 void main() {
   group('ClaudeClient', () {
+    group('cache usage accounting', () {
+      final cases = <String, Map<String, int>>{
+        'no cache fields': {},
+        'cache write': {'cache_creation_input_tokens': 100000},
+        'cache read': {'cache_read_input_tokens': 100000},
+        'mixed read and write': {
+          'cache_read_input_tokens': 100000,
+          'cache_creation_input_tokens': 1000,
+        },
+      };
+
+      for (final entry in cases.entries) {
+        final cachedTokens = entry.value.values.fold(0, (a, b) => a + b);
+        final inputTokens = 50 + cachedTokens;
+        final usage = {'input_tokens': 50, 'output_tokens': 2, ...entry.value};
+
+        test('generate counts all input tokens: ${entry.key}', () async {
+          final adapter = _CaptureAdapter([
+            (_) => _jsonResponse({
+              'content': [
+                {'type': 'text', 'text': 'ok'},
+              ],
+              'stop_reason': 'end_turn',
+              'usage': {...usage, 'output_tokens': 20},
+            }),
+          ]);
+          final client = ClaudeClient(
+            apiKey: 'test-key',
+            client: Dio()..httpClientAdapter = adapter,
+          );
+          final result = await client.generate([
+            UserMessage.text('hello'),
+          ], modelConfig: ModelConfig(model: 'claude-test'));
+
+          expect(result.usage!.promptTokens, inputTokens);
+          expect(result.usage!.completionTokens, 20);
+          expect(result.usage!.totalTokens, inputTokens + 20);
+          expect(result.usage!.cachedToken, cachedTokens);
+          expect(result.usage!.originalUsage, {...usage, 'output_tokens': 20});
+        });
+
+        test('stream retains all input tokens: ${entry.key}', () async {
+          final adapter = _CaptureAdapter([
+            (_) => _streamResponse([
+              {
+                'type': 'message_start',
+                'message': {'usage': usage},
+              },
+              {
+                'type': 'message_delta',
+                'delta': {'stop_reason': 'end_turn'},
+                'usage': {'output_tokens': 20},
+              },
+              {'type': 'message_stop'},
+            ]),
+          ]);
+          final client = ClaudeClient(
+            apiKey: 'test-key',
+            client: Dio()..httpClientAdapter = adapter,
+          );
+          final stream = await client.stream([
+            UserMessage.text('hello'),
+          ], modelConfig: ModelConfig(model: 'claude-test'));
+          final usages = await stream
+              .map((event) => event.modelMessage?.usage)
+              .where((usage) => usage != null)
+              .cast<ModelUsage>()
+              .toList();
+
+          expect(usages, hasLength(2));
+          for (final actual in usages) {
+            expect(actual.promptTokens, inputTokens);
+            expect(actual.cachedToken, cachedTokens);
+            expect(actual.totalTokens, inputTokens + actual.completionTokens);
+          }
+          expect(usages.first.completionTokens, 2);
+          expect(usages.last.completionTokens, 20);
+          expect(usages.first.originalUsage, usage);
+          expect(usages.last.originalUsage, {...usage, 'output_tokens': 20});
+        });
+      }
+
+      test(
+        'stream replaces cumulative usage and preserves omitted fields',
+        () async {
+          final adapter = _CaptureAdapter([
+            (_) => _streamResponse([
+              {
+                'type': 'message_start',
+                'message': {
+                  'usage': {
+                    'input_tokens': 50,
+                    'cache_read_input_tokens': 100000,
+                    'cache_creation_input_tokens': 1000,
+                    'output_tokens': 2,
+                  },
+                },
+              },
+              {
+                'type': 'message_delta',
+                'delta': {},
+                'usage': {
+                  'input_tokens': 60,
+                  'cache_read_input_tokens': 110000,
+                  'cache_creation_input_tokens': 2000,
+                  'output_tokens': 10,
+                },
+              },
+              {
+                'type': 'message_delta',
+                'delta': {},
+                'usage': {
+                  'input_tokens': 0,
+                  'cache_read_input_tokens': null,
+                  'output_tokens': 15,
+                },
+              },
+              {
+                'type': 'message_delta',
+                'delta': {'stop_reason': 'end_turn'},
+                'usage': {'output_tokens': 20},
+              },
+              {'type': 'message_stop'},
+            ]),
+          ]);
+          final client = ClaudeClient(
+            apiKey: 'test-key',
+            client: Dio()..httpClientAdapter = adapter,
+          );
+          final stream = await client.stream([
+            UserMessage.text('hello'),
+          ], modelConfig: ModelConfig(model: 'claude-test'));
+          final usages = await stream
+              .map((event) => event.modelMessage?.usage)
+              .where((usage) => usage != null)
+              .cast<ModelUsage>()
+              .toList();
+
+          expect(usages.map((u) => u.promptTokens), [
+            101050,
+            112060,
+            112000,
+            112000,
+          ]);
+          expect(usages.map((u) => u.cachedToken), [
+            101000,
+            112000,
+            112000,
+            112000,
+          ]);
+          expect(usages.map((u) => u.completionTokens), [2, 10, 15, 20]);
+          expect(usages.map((u) => u.totalTokens), [
+            101052,
+            112070,
+            112015,
+            112020,
+          ]);
+          // Each emitted usage retains its own snapshot as later deltas arrive.
+          expect(usages.first.originalUsage['input_tokens'], 50);
+          expect(usages.last.originalUsage, {
+            'input_tokens': 0,
+            'cache_read_input_tokens': 110000,
+            'cache_creation_input_tokens': 2000,
+            'output_tokens': 20,
+          });
+        },
+      );
+    });
+
     test('保留并原样回传 Anthropic assistant content blocks', () async {
       final assistantContent = [
         {'type': 'thinking', 'thinking': '先分析需要读取文件', 'signature': 'sig-1'},

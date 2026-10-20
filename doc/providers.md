@@ -215,6 +215,45 @@ final client = ClaudeClient(
 final config = ModelConfig(model: 'claude-sonnet-4-20250514');
 ```
 
+#### Prompt caching and usage
+
+`ClaudeClient.enablePromptCaching` controls top-level automatic prompt caching
+for both `generate()` and `stream()`:
+
+| Value | Behavior |
+| --- | --- |
+| `null` (default) | Enable only when the `baseUrl` host is `api.anthropic.com`. |
+| `true` | Send `cache_control: {"type": "ephemeral"}`, including to compatible endpoints. |
+| `false` | Omit the top-level automatic caching field. |
+
+```dart
+final client = ClaudeClient(
+  apiKey: Platform.environment['ANTHROPIC_API_KEY'] ?? '',
+  enablePromptCaching: false,
+);
+```
+
+The setting applies to the client instance. There is no per-request or TTL
+override; `ModelConfig.extra['cache_control']` is not forwarded. The default
+cache TTL is five minutes. Cache writes cost more than ordinary input, so
+caching is most useful when prefixes are reused within the TTL. Setting `false`
+does not strip explicit block-level markers from supplied assistant content
+blocks. `BedrockClaudeClient` is unaffected.
+
+For Claude responses, `ModelUsage.promptTokens` includes uncached input, cache
+reads, and cache writes. `totalTokens` adds output tokens to that complete input.
+This lets context compression use the full input size even when caching is active.
+Streaming usage values are cumulative snapshots, not increments to sum.
+
+`cachedToken` retains its existing meaning of cache reads plus writes; it is not
+a cache-hit count. For separate counts or cost calculations, read
+`originalUsage['cache_read_input_tokens']`,
+`originalUsage['cache_creation_input_tokens']`, and
+`originalUsage['input_tokens']` (uncached input). Streaming snapshots retain the
+latest non-null value of each reported field.
+
+See [Anthropic prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
+
 ### MiniMax
 
 MiniMax exposes an Anthropic-compatible API endpoint.

@@ -581,20 +581,28 @@ class ClaudeClient extends LLMClient {
       thoughtSignature: thoughtSignature,
       usage: data['usage'] != null
           ? ModelUsage(
-              promptTokens: data['usage']['input_tokens'] ?? 0,
+              promptTokens: _totalInputTokens(data['usage']),
               completionTokens: data['usage']['output_tokens'] ?? 0,
               totalTokens:
-                  (data['usage']['input_tokens'] ?? 0) +
-                  (data['usage']['output_tokens'] ?? 0),
+                  _totalInputTokens(data['usage']) +
+                  (data['usage']['output_tokens'] as int? ?? 0),
               cachedToken:
                   (data['usage']['cache_read_input_tokens'] ?? 0) +
                   (data['usage']['cache_creation_input_tokens'] ?? 0),
+              originalUsage: Map<String, dynamic>.from(data['usage']),
               model: modelConfig.model,
             )
           : null,
     );
   }
 }
+
+// Anthropic reports uncached input, cache reads, and cache writes separately.
+// All three occupy context and must count toward compression thresholds.
+int _totalInputTokens(Map usage) =>
+    (usage['input_tokens'] as int? ?? 0) +
+    (usage['cache_read_input_tokens'] as int? ?? 0) +
+    (usage['cache_creation_input_tokens'] as int? ?? 0);
 
 class _ClaudeStreamParser {
   final ModelConfig modelConfig;
@@ -611,6 +619,7 @@ class _ClaudeStreamParser {
   int _completionTokens = 0;
   int _cachedTokens = 0;
   int _thoughtTokens = 0;
+  final Map<String, dynamic> _usage = {};
 
   _ClaudeStreamParser(this.modelConfig);
 
@@ -666,12 +675,7 @@ class _ClaudeStreamParser {
     } else if (type == 'message_start') {
       final message = chunk['message'];
       if (message != null && message['usage'] != null) {
-        final usage = message['usage'];
-        _promptTokens = usage['input_tokens'] ?? 0;
-        _cachedTokens =
-            (usage['cache_read_input_tokens'] ?? 0) +
-            (usage['cache_creation_input_tokens'] ?? 0);
-        _completionTokens += (usage['output_tokens'] as int? ?? 0);
+        _updateUsage(message['usage']);
         return ModelMessage(usage: _currentUsage(), model: modelConfig.model);
       }
     } else if (type == 'message_delta') {
@@ -683,9 +687,7 @@ class _ClaudeStreamParser {
       }
 
       if (chunk['usage'] != null) {
-        final u = chunk['usage'];
-        _completionTokens = (u['output_tokens'] as int? ?? 0);
-        _thoughtTokens = u['output_tokens_details']?['reasoning_tokens'] ?? 0;
+        _updateUsage(chunk['usage']);
       }
 
       if (stopReason != null || chunk['usage'] != null) {
@@ -700,6 +702,21 @@ class _ClaudeStreamParser {
     return null;
   }
 
+  void _updateUsage(Map<String, dynamic> usage) {
+    // Stream usage fields are cumulative totals, not increments. Omitted or
+    // null fields retain their previous values; an explicit zero replaces them.
+    for (final entry in usage.entries) {
+      if (entry.value != null) _usage[entry.key] = entry.value;
+    }
+    _promptTokens = _totalInputTokens(_usage);
+    _cachedTokens =
+        (_usage['cache_read_input_tokens'] as int? ?? 0) +
+        (_usage['cache_creation_input_tokens'] as int? ?? 0);
+    _completionTokens = _usage['output_tokens'] as int? ?? 0;
+    _thoughtTokens =
+        _usage['output_tokens_details']?['reasoning_tokens'] as int? ?? 0;
+  }
+
   ModelUsage _currentUsage() {
     return ModelUsage(
       promptTokens: _promptTokens,
@@ -707,6 +724,7 @@ class _ClaudeStreamParser {
       totalTokens: _promptTokens + _completionTokens,
       cachedToken: _cachedTokens,
       thoughtToken: _thoughtTokens,
+      originalUsage: Map<String, dynamic>.from(_usage),
       model: modelConfig.model,
     );
   }

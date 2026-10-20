@@ -160,6 +160,10 @@ final client = ClaudeClient(
 );
 ```
 
+官方 Anthropic 接口默认启用自动 Prompt 缓存。可设置
+`enablePromptCaching: false` 关闭，或设置 `true` 为支持此能力的兼容接口开启。
+配置与 Token 统计说明见 [缓存与用量统计](doc/providers.zh-CN.md#prompt-缓存与用量统计)。
+
 ### AWS Bedrock（Claude）
 
 通过 AWS Signature V4 鉴权，而不是简单 API Key。

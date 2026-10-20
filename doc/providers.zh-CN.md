@@ -211,6 +211,43 @@ final client = ClaudeClient(
 final config = ModelConfig(model: 'claude-sonnet-4-20250514');
 ```
 
+#### Prompt 缓存与用量统计
+
+`ClaudeClient.enablePromptCaching` 控制顶层自动缓存，对 `generate()` 和
+`stream()` 均生效：
+
+| 值 | 行为 |
+| --- | --- |
+| `null`（默认） | 仅当 `baseUrl` 的 host 为 `api.anthropic.com` 时开启。 |
+| `true` | 发送 `cache_control: {"type": "ephemeral"}`，也可用于支持此能力的兼容接口。 |
+| `false` | 不发送顶层自动缓存字段。 |
+
+```dart
+final client = ClaudeClient(
+  apiKey: Platform.environment['ANTHROPIC_API_KEY'] ?? '',
+  enablePromptCaching: false,
+);
+```
+
+此配置作用于 client 实例，目前不支持单次请求覆盖或 TTL 配置，
+`ModelConfig.extra['cache_control']` 不会透传。默认缓存 TTL 为 5 分钟。
+缓存写入比普通输入更贵，因此适合在 TTL 内重复使用前缀的场景。
+设置 `false` 不会移除调用者在 assistant content blocks 中显式提供的块级缓存标记。
+`BedrockClaudeClient` 不受此配置影响。
+
+Claude 响应的 `ModelUsage.promptTokens` 包含未缓存输入、缓存读取和缓存写入；
+`totalTokens` 为完整输入加输出。这使上下文压缩在缓存生效时仍能按完整输入判断阈值。
+流式 usage 是累计快照，不应将每个事件的数值相加。
+
+`cachedToken` 保持原有“缓存读取＋写入”的含义，不等同于缓存命中数。
+需要分别统计或计算费用时，可读取
+`originalUsage['cache_read_input_tokens']`、
+`originalUsage['cache_creation_input_tokens']` 和
+`originalUsage['input_tokens']`（未缓存输入）。
+流式快照保留各字段最近一次报告的非空值。
+
+参考 [Anthropic 缓存文档](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)。
+
 ### MiniMax
 
 MiniMax 暴露 Anthropic 兼容 API 端点。

@@ -1,3 +1,13 @@
+## 2.1.8
+
+### Claude prompt caching
+
+- Enable automatic prompt caching by default for `api.anthropic.com`, with a nullable `ClaudeClient.enablePromptCaching` override to explicitly enable or disable it. Third-party endpoints remain unchanged by default. (#78)
+- Include cache reads and writes in Claude `promptTokens` and `totalTokens`, so context compression accounts for the complete input.
+- Apply cumulative streaming usage updates by replacement, preserving omitted or null fields and accepting explicit zero values.
+- Preserve provider usage fields in `originalUsage`, including separate cache read and write counts; retain the existing combined `cachedToken` meaning.
+- Add regression tests for cached usage in ordinary and streaming responses and document caching configuration and token accounting in English and Chinese.
+
 ## 2.1.7
 
 ### LLM clients

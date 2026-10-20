@@ -172,6 +172,11 @@ final client = ClaudeClient(
 );
 ```
 
+Automatic prompt caching is enabled by default for the official Anthropic
+endpoint. Set `enablePromptCaching: false` to disable it, or `true` to opt in
+for a compatible endpoint. See [caching and usage](doc/providers.md#prompt-caching-and-usage)
+for token accounting and configuration details.
+
 ### Kimi (Moonshot AI)
 
 Kimi is OpenAI Chat Completions compatible. Point `OpenAIClient` at Kimi's `baseUrl`. Models such as `kimi-k2` and `kimi-k2-thinking` work; `reasoning_content` from thinking models is handled automatically.
