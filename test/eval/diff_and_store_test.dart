@@ -115,6 +115,46 @@ void main() {
       expect(unchanged, contains('a'));
     });
 
+    test('partial-credit threshold matches task pass rate in the diff', () {
+      EvalRunReport report() => EvalRunReport(
+        runName: 'r',
+        suite: EvalSuite(
+          name: 's',
+          agentName: 'agent_x',
+          kind: SuiteKind.regression,
+          taskPassThreshold: 0.8,
+          tasks: [
+            _StubTask(id: 'a', graders: [_NoopGrader()]),
+          ],
+        ),
+        trials: [
+          makeTrialResult(
+            runName: 'r',
+            suiteName: 's',
+            taskId: 'a',
+            trialIndex: 0,
+            scores: [
+              Score(graderName: 'g1', value: 1.0, passed: true),
+              Score(
+                graderName: 'g2',
+                value: 0.7,
+                passed: false,
+                rationale: 'partial',
+              ),
+            ],
+          ),
+        ],
+        startedAt: DateTime(2025),
+        endedAt: DateTime(2025),
+      );
+
+      final current = report();
+      final diff = current.diffWith(report());
+      expect(current.taskPassRate, 1.0);
+      expect(diff.transitions.single.currentPassRate, 1.0);
+      expect(current.trials.single.allGradersPassed, isFalse);
+    });
+
     test('reports added and removed task ids', () {
       final baseline = _buildRun(
         name: 'main',

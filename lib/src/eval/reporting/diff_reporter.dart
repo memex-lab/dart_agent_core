@@ -175,8 +175,8 @@ EvalRunDiff diffRunReports({
   final shared = currByTask.keys.toSet().intersection(baseByTask.keys.toSet());
   final transitions = <TaskTransition>[];
   for (final id in shared) {
-    final cur = _passRate(currByTask[id]!);
-    final base = _passRate(baseByTask[id]!);
+    final cur = _passRate(current, currByTask[id]!);
+    final base = _passRate(baseline, baseByTask[id]!);
     final delta = cur - base;
     final t = delta.abs() < significanceThreshold
         ? TaskTransitionKind.unchanged
@@ -217,9 +217,9 @@ EvalRunDiff diffRunReports({
   );
 }
 
-double _passRate(List<TrialResult> trs) {
+double _passRate(EvalRunReport report, List<TrialResult> trs) {
   if (trs.isEmpty) return 0.0;
-  return trs.where((t) => t.allGradersPassed).length / trs.length;
+  return trs.where(report.countsTowardTaskPassRate).length / trs.length;
 }
 
 String _pct(double v) => '${(v * 100).toStringAsFixed(1)}%';
