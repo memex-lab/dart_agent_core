@@ -63,6 +63,24 @@ void main() {
       expect(finalResult.message, contains('5'));
     });
 
+    test('同一条消息里的并行相同调用只计一次', () async {
+      final state = AgentState.empty();
+      final detector = DefaultLoopDetector(state: state, toolLoopThreshold: 5);
+
+      final result = await detector.detect(
+        _msgWithCalls([
+          for (var i = 0; i < 5; i++)
+            FunctionCall(
+              id: 'parallel_$i',
+              name: 'read',
+              arguments: '{"path":"same.md"}',
+            ),
+        ]),
+      );
+
+      expect(result.isLoop, isFalse);
+    });
+
     test('达到阈值前不应触发环路', () async {
       final state = AgentState.empty();
       final detector = DefaultLoopDetector(state: state, toolLoopThreshold: 5);
