@@ -114,7 +114,10 @@ class McpManager {
       if (description != null && description.isNotEmpty) {
         lines.add('  $description');
       } else {
-        lines.add('instructions: \n ${session.instructions}');
+        final instructions = session.instructions;
+        if (instructions != null && instructions.isNotEmpty) {
+          lines.add('instructions:\n $instructions');
+        }
       }
     }
     lines.add('');

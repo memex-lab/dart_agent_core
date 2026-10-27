@@ -143,6 +143,7 @@ void main() {
         ]),
       );
       expect(manager.buildMcpSystemPrompt()?.content, contains('echo'));
+      expect(manager.buildMcpSystemPrompt()?.content, isNot(contains('null')));
 
       final byName = {
         for (final tool in manager.getBridgeTools()) tool.name: tool,
