@@ -76,15 +76,18 @@ class EvalRunReport {
     if (byTask.isEmpty) return 0.0;
     final passing = byTask.values.where((trs) {
       if (suite.kind == SuiteKind.capability) {
-        return trs.any(_trialPassesForTaskRate);
+        return trs.any(countsTowardTaskPassRate);
       }
-      return trs.every(_trialPassesForTaskRate);
+      return trs.every(countsTowardTaskPassRate);
     }).length;
     return passing / byTask.length;
   }
 
   /// Whether a single trial counts as passed for [taskPassRate].
-  bool _trialPassesForTaskRate(TrialResult t) {
+  ///
+  /// Report diffs use the same rule so a partial-credit threshold does not
+  /// disagree with the headline task pass rate.
+  bool countsTowardTaskPassRate(TrialResult t) {
     // Scores can exist on imported or manually constructed failed executions.
     // Partial credit must respect the same execution boundary as binary grading.
     switch (t.trial.status) {
