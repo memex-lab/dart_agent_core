@@ -81,6 +81,29 @@ void main() {
       expect(result.isLoop, isFalse);
     });
 
+    test('混合批次保留打断连续调用的尾部签名', () async {
+      final state = AgentState.empty();
+      final detector = DefaultLoopDetector(state: state);
+
+      var result = await detector.detect(
+        _msgWithCalls([
+          FunctionCall(id: 'a1', name: 'a', arguments: '{}'),
+          FunctionCall(id: 'b1', name: 'b', arguments: '{}'),
+          FunctionCall(id: 'a2', name: 'a', arguments: '{}'),
+        ]),
+      );
+      expect(result.isLoop, isFalse);
+
+      for (var i = 0; i < 4; i++) {
+        result = await detector.detect(
+          _msgWithCalls([
+            FunctionCall(id: 'b_follow_$i', name: 'b', arguments: '{}'),
+          ]),
+        );
+        expect(result.isLoop, isFalse, reason: '第 ${i + 1} 次 B 不应触发');
+      }
+    });
+
     test('达到阈值前不应触发环路', () async {
       final state = AgentState.empty();
       final detector = DefaultLoopDetector(state: state, toolLoopThreshold: 5);

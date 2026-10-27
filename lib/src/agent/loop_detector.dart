@@ -115,19 +115,21 @@ class DefaultLoopDetector implements LoopDetector {
   }
 
   void _updateToolCalls(List<FunctionCall> calls) {
-    // One model message can carry several parallel calls. Identical signatures
-    // in that batch are one step, not N consecutive repeats.
-    final seenInBatch = <String>{};
+    // Consecutive identical calls in one message are one step. A later call
+    // with a different signature, or a return to an earlier signature, still
+    // counts so it can break a run.
+    String? previousSignature;
     for (final call in calls) {
       final signature = _getSignature(call);
 
       // Handle streaming updates: if ID matches last entry, update it.
       if (_recentToolCalls.isNotEmpty && _recentToolCalls.last.id == call.id) {
         _recentToolCalls.last.signature = signature;
-        seenInBatch.add(signature);
+        previousSignature = signature;
         continue;
       }
-      if (!seenInBatch.add(signature)) continue;
+      if (signature == previousSignature) continue;
+      previousSignature = signature;
       _recentToolCalls.add(_ToolCallEntry(call.id, signature));
       // Maintain fixed size buffer
       if (_recentToolCalls.length > toolLoopThreshold) {
