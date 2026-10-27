@@ -70,4 +70,27 @@ void main() {
 
     await expectLater(manager.connectAll(configs), throwsArgumentError);
   });
+
+  test(
+    'failed stdio connect can be retried after the client is released',
+    () async {
+      final session = McpSession(
+        serverName: 'bad',
+        config: McpConnectionConfig(
+          serverName: 'bad',
+          type: McpTransportType.stdio,
+          command: Platform.resolvedExecutable,
+          args: const ['run', 'test/fixtures/mcp_exit_immediately.dart'],
+        ),
+      );
+      addTearDown(session.disconnect);
+
+      await expectLater(session.connect(), throwsA(anything));
+      expect(session.state, McpConnectionState.error);
+      expect(session.isConnected, isFalse);
+
+      await expectLater(session.connect(), throwsA(anything));
+      expect(session.state, McpConnectionState.error);
+    },
+  );
 }
