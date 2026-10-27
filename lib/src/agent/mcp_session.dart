@@ -162,6 +162,7 @@ class McpSession {
       // Perform initial discovery
       await _discover();
     } catch (e) {
+      await _releaseClient();
       _state = McpConnectionState.error;
       _logger.severe('[MCP:$serverName] Connection failed: $e');
       rethrow;
@@ -452,14 +453,19 @@ class McpSession {
     await _discover();
   }
 
-  /// Disconnect from the MCP server and clean up resources.
-  Future<void> disconnect() async {
-    _logger.info('[MCP:$serverName] Disconnecting...');
+  /// Close the client without clearing discovered catalogs or connection state.
+  Future<void> _releaseClient() async {
     try {
       await _client?.close();
     } catch (_) {}
     _client = null;
     _transport = null;
+  }
+
+  /// Disconnect from the MCP server and clean up resources.
+  Future<void> disconnect() async {
+    _logger.info('[MCP:$serverName] Disconnecting...');
+    await _releaseClient();
     _tools = [];
     _resources = [];
     _prompts = [];
