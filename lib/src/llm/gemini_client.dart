@@ -468,10 +468,10 @@ Map<String, dynamic> _createRequestBody(
   final systemMessages = messages.whereType<SystemMessage>().toList();
 
   final generationConfig = <String, dynamic>{
-    'temperature': modelConfig.temperature,
-    'maxOutputTokens': modelConfig.maxTokens,
-    'topP': modelConfig.topP,
-    'topK': modelConfig.topK,
+    if (modelConfig.temperature != null) 'temperature': modelConfig.temperature,
+    if (modelConfig.maxTokens != null) 'maxOutputTokens': modelConfig.maxTokens,
+    if (modelConfig.topP != null) 'topP': modelConfig.topP,
+    if (modelConfig.topK != null) 'topK': modelConfig.topK,
   };
 
   if (jsonOutput == true) {
