@@ -88,46 +88,49 @@ void main() {
       ]);
     });
 
-    test('preserves explicit provider ids when another call has no id', () async {
-      final adapter = _CaptureAdapter([
-        (_) => _jsonResponse({
-          'candidates': [
-            {
-              'content': {
-                'parts': [
-                  {
-                    'functionCall': {
-                      'name': 'search',
-                      'args': {'q': 'a'},
+    test(
+      'preserves explicit provider ids when another call has no id',
+      () async {
+        final adapter = _CaptureAdapter([
+          (_) => _jsonResponse({
+            'candidates': [
+              {
+                'content': {
+                  'parts': [
+                    {
+                      'functionCall': {
+                        'name': 'search',
+                        'args': {'q': 'a'},
+                      },
                     },
-                  },
-                  {
-                    'functionCall': {
-                      'id': 'search',
-                      'name': 'search',
-                      'args': {'q': 'b'},
+                    {
+                      'functionCall': {
+                        'id': 'search',
+                        'name': 'search',
+                        'args': {'q': 'b'},
+                      },
                     },
-                  },
-                ],
+                  ],
+                },
+                'finishReason': 'STOP',
               },
-              'finishReason': 'STOP',
-            },
-          ],
-        }),
-      ]);
-      final client = GeminiClient(
-        apiKey: 'test-key',
-        client: Dio()..httpClientAdapter = adapter,
-      );
+            ],
+          }),
+        ]);
+        final client = GeminiClient(
+          apiKey: 'test-key',
+          client: Dio()..httpClientAdapter = adapter,
+        );
 
-      final result = await client.generate([
-        UserMessage.text('search twice'),
-      ], modelConfig: ModelConfig(model: 'gemini-test'));
+        final result = await client.generate([
+          UserMessage.text('search twice'),
+        ], modelConfig: ModelConfig(model: 'gemini-test'));
 
-      expect(result.functionCalls, hasLength(2));
-      expect(result.functionCalls.last.id, 'search');
-      expect(result.functionCalls.first.id, isNot('search'));
-    });
+        expect(result.functionCalls, hasLength(2));
+        expect(result.functionCalls.last.id, 'search');
+        expect(result.functionCalls.first.id, isNot('search'));
+      },
+    );
 
     test(
       'streaming assigns distinct synthetic ids across chunks without ids',
@@ -159,10 +162,9 @@ void main() {
           client: Dio()..httpClientAdapter = adapter,
         );
 
-        final stream = await client.stream(
-          [UserMessage.text('search')],
-          modelConfig: ModelConfig(model: 'gemini-test'),
-        );
+        final stream = await client.stream([
+          UserMessage.text('search'),
+        ], modelConfig: ModelConfig(model: 'gemini-test'));
         final ids = <String>[];
         await for (final event in stream) {
           final message = event.modelMessage;
@@ -287,6 +289,38 @@ void main() {
         });
       },
     );
+
+    test('omits null sampling fields from generationConfig', () async {
+      final adapter = _CaptureAdapter([
+        (_) => _jsonResponse({
+          'candidates': [
+            {
+              'content': {
+                'parts': [
+                  {'text': 'ok'},
+                ],
+              },
+              'finishReason': 'STOP',
+            },
+          ],
+        }),
+      ]);
+      final client = GeminiClient(
+        apiKey: 'test-key',
+        client: Dio()..httpClientAdapter = adapter,
+      );
+
+      await client.generate([
+        UserMessage.text('hi'),
+      ], modelConfig: ModelConfig(model: 'gemini-test', temperature: 0.2));
+
+      final body = adapter.bodies.single as Map<String, dynamic>;
+      final config = body['generationConfig'] as Map<String, dynamic>;
+      expect(config['temperature'], 0.2);
+      expect(config.containsKey('maxOutputTokens'), isFalse);
+      expect(config.containsKey('topP'), isFalse);
+      expect(config.containsKey('topK'), isFalse);
+    });
   });
 }
 
