@@ -939,6 +939,10 @@ final diff = report.diffWith(baseline!);
 File('diff.md').writeAsStringSync(diff.toMarkdown());
 ```
 
+Per-task rates in `diff.transitions` are the fraction of trials that satisfy each report's own `suite.taskPassThreshold`. At the default `1.0`, this uses `allGradersPassed`; below `1.0`, it uses the mean of non-null score values. Errored, timed-out, and skipped trials do not count as passes. `countsTowardTaskPassRate(trialResult)` exposes this eligibility rule for custom reporting.
+
+These rates remain fractions of trials, while the headline `taskPassRate` aggregates whole tasks: capability suites require any trial to pass, and regression/mixed suites require every trial to pass. Binary `trialPassRate`, pass@k, and pass^k metrics are unchanged. Use matching thresholds when comparing runs to isolate changes in agent behavior.
+
 </br>
 
 

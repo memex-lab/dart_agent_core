@@ -8,7 +8,7 @@
 
 MCP 集成采用三层渐进式披露：
 
-1. 系统提示词只列出已连接的 Server、描述与能力数量。
+1. 系统提示词列出已连接的 Server、描述与能力数量。描述缺失或为空时，使用非空的 Server instructions；instructions 缺失或为空则省略。
 2. 模型通过桥接工具查看指定 Server 的工具、资源或 Prompt。
 3. 模型只调用或读取当前任务需要的能力。
 
@@ -115,6 +115,8 @@ await agent.run([UserMessage.text('第一次请求')]);
 await manager.connectAll(configs);
 await agent.run([UserMessage.text('第二次请求')]);
 ```
+
+`McpSession.connect()` 失败时，会释放客户端、将会话状态设为 `error`，并重新抛出连接错误。可以对同一会话再次调用 `connect()` 重试；框架不会自动执行此重试。
 
 `disconnectAll()` 和 `dispose()` 都是幂等的，应用清理代码可以安全调用。
 

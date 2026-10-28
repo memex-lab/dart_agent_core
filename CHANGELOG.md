@@ -1,3 +1,17 @@
+## 2.1.9
+
+### Agent runtime and MCP
+
+- Count consecutive identical tool calls within one detection batch as one step, while preserving intervening signatures and trailing calls that break a run. (#79)
+- Release the MCP client after a failed connection attempt so the session can be retried without retaining the failed client. (#80)
+- Omit missing or empty MCP server instructions from the system prompt. (#81)
+
+### Evaluation and LLM clients
+
+- Apply each report's `taskPassThreshold` to per-task trial pass rates in report diffs, matching the trial eligibility rule used by `taskPassRate`. (#82)
+- Omit null `temperature`, `maxOutputTokens`, `topP`, and `topK` fields from Gemini `generationConfig`, preserving explicitly configured values. (#83)
+- Update the English and Chinese guides for loop detection, MCP lifecycle and prompts, report diffs, and Gemini request configuration.
+
 ## 2.1.8
 
 ### Claude prompt caching

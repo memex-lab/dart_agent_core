@@ -881,6 +881,10 @@ final diff = report.diffWith(baseline!);
 File('diff.md').writeAsStringSync(diff.toMarkdown());
 ```
 
+`diff.transitions` 中每个任务的通过率，是满足各自报告 `suite.taskPassThreshold` 的 trial 占比。默认阈值 `1.0` 使用 `allGradersPassed`；低于 `1.0` 时，使用非 null 分值的平均值判断。执行出错、超时或跳过的 trial 不计为通过。自定义报告可调用 `countsTowardTaskPassRate(trialResult)` 复用此规则。
+
+这里仍是 trial 占比，而汇总指标 `taskPassRate` 按整个任务判断：capability suite 任一 trial 通过即可，regression/mixed suite 则要求全部 trial 通过。二元指标 `trialPassRate`、pass@k 和 pass^k 不变。对比运行时应使用一致的阈值，以免将阈值变化误认为 Agent 行为变化。
+
 </br>
 
 ## 录制 / 回放 / 限流

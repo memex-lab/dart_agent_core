@@ -8,7 +8,7 @@
 
 MCP integration uses three levels of progressive disclosure:
 
-1. The system prompt lists connected servers, their descriptions, and capability counts.
+1. The system prompt lists connected servers, their descriptions, and capability counts. If a description is missing or empty, non-empty server instructions are used instead; missing or empty instructions are omitted.
 2. The model uses bridge tools to inspect a selected server's tools, resources, or prompts.
 3. The model calls or reads only the capability it needs.
 
@@ -115,6 +115,8 @@ await agent.run([UserMessage.text('First request')]);
 await manager.connectAll(configs);
 await agent.run([UserMessage.text('Second request')]);
 ```
+
+If `McpSession.connect()` fails, the session releases its client, enters the `error` state, and rethrows the connection error. You can retry by calling `connect()` on the same session; retries are not automatic.
 
 `disconnectAll()` and `dispose()` are idempotent and can be called by application cleanup code.
 

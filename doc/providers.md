@@ -58,6 +58,8 @@ final client = GeminiClient(
 final config = ModelConfig(model: 'gemini-2.5-pro');
 ```
 
+Gemini omits `temperature`, `maxOutputTokens`, `topP`, and `topK` from `generationConfig` when the corresponding `ModelConfig` values are null. Set `temperature`, `maxTokens`, `topP`, or `topK` explicitly to send them; non-null values, including zero, are preserved. This applies to both `generate()` and `stream()`.
+
 ### Amazon Bedrock (Claude)
 
 Bedrock uses AWS Signature V4 for authentication rather than a simple API key. The client computes the signature automatically from your AWS credentials.

@@ -167,7 +167,7 @@ Cancellation throws `AgentException(AgentExceptionCode.cancelled, ...)`. To susp
 
 `StatefulAgent` automatically creates a `DefaultLoopDetector` unless you supply your own. It uses two mechanisms:
 
-1. **Tool signature tracking**: If the same tool is called with identical arguments `N` consecutive times (default `toolLoopThreshold = 5`), a loop is declared.
+1. **Tool signature tracking**: If the same tool signature (name and arguments) occupies the last `N` tracked steps (default `toolLoopThreshold = 5`), a loop is declared. Within one `detect()` batch, consecutive identical calls count as one step. Mixed batches retain their order: `[A, B, A]` keeps the final A that interrupts B. Calls in later batches continue to count toward the threshold. In streaming mode, detection runs per chunk, so this deduplication does not span separate chunks.
 2. **Periodic LLM diagnosis**: After `llmCheckAfterTurns` turns (default 30), every `llmCheckInterval` turns (default 10), the agent sends recent history to the LLM and asks it to diagnose whether a loop is occurring. A loop is declared if `confidence > 0.8`.
 
 A detected loop throws `AgentException(AgentExceptionCode.loopDetection, ...)`.

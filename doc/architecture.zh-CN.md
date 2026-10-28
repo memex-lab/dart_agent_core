@@ -167,7 +167,7 @@ await agent.run(messages, cancelToken: cancelToken);
 
 除非自行提供实现，`StatefulAgent` 会自动创建 `DefaultLoopDetector`。它使用两种机制：
 
-1. **工具签名追踪**：同一工具以相同参数连续调用 `N` 次（默认 `toolLoopThreshold = 5`）即判定为循环。
+1. **工具签名追踪**：最近 `N` 个追踪步骤的工具签名（名称和参数）都相同时，判定为循环，默认 `toolLoopThreshold = 5`。同一 `detect()` 批次内连续相同的调用只计一步；混合批次保留顺序，例如 `[A, B, A]` 会保留打断 B 连续性的尾部 A。后续批次中的调用继续累计。流式模式按 chunk 执行检测，因此此去重不会跨越不同 chunk。
 2. **周期性 LLM 诊断**：在 `llmCheckAfterTurns` 回合之后（默认 30），每隔 `llmCheckInterval` 回合（默认 10），Agent 会把近期历史发给 LLM，询问是否发生循环。若 `confidence > 0.8` 则判定为循环。
 
 检测到循环会抛出 `AgentException(AgentExceptionCode.loopDetection, ...)`。

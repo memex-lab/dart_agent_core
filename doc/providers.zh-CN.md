@@ -54,6 +54,8 @@ final client = GeminiClient(
 final config = ModelConfig(model: 'gemini-2.5-pro');
 ```
 
+当对应的 `ModelConfig` 值为 null 时，Gemini 不会在 `generationConfig` 中发送 `temperature`、`maxOutputTokens`、`topP` 和 `topK`。显式设置 `temperature`、`maxTokens`、`topP` 或 `topK` 即可发送相应参数；非 null 值（包括零）会保留。此行为同时适用于 `generate()` 和 `stream()`。
+
 ### Amazon Bedrock（Claude）
 
 Bedrock 使用 AWS Signature V4 鉴权，而不是简单 API Key。客户端会根据 AWS 凭证自动计算签名。
