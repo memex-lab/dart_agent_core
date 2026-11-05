@@ -12,7 +12,7 @@ import 'dart:io';
 /// 工厂方法 [LangfuseConfig.fromEnv] 从环境变量读取，方便 CI 接入。
 class LangfuseConfig {
   /// 形如 `https://cloud.langfuse.com` 或 `https://langfuse.your-domain.com`。
-  /// 末尾不需要带 `/api/public/ingestion`。
+  /// 末尾不需要带 API path。
   final String host;
   final String publicKey;
   final String secretKey;
@@ -75,6 +75,18 @@ class LangfuseConfig {
     );
   }
 
-  String get ingestionUrl =>
-      '${host.replaceAll(RegExp(r'/$'), '')}/api/public/ingestion';
+  String get _hostBase => host.replaceAll(RegExp(r'/$'), '');
+
+  /// `POST /api/public/otel/v1/traces`. Langfuse v4 accepts traces here.
+  String get otelTracesUrl => '$_hostBase/api/public/otel/v1/traces';
+
+  /// `POST /api/public/scores`. Scores stay on this API in v4.
+  String get scoresUrl => '$_hostBase/api/public/scores';
+
+  /// Legacy batch endpoint. Langfuse v4 returns 400 for every event type
+  /// except `score-create`. The client posts [otelTracesUrl] and [scoresUrl].
+  @Deprecated(
+    'Langfuse v4 rejects this endpoint for traces. Use otelTracesUrl and scoresUrl.',
+  )
+  String get ingestionUrl => '$_hostBase/api/public/ingestion';
 }

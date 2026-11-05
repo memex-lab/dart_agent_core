@@ -998,11 +998,15 @@ final runner = EvalRunner(
 
 | dart_agent_core | Langfuse |
 |---|---|
-| 一个 `Trial` | 一个 trace（`name = suite/task#trialIndex`，`userId = runName`，`sessionId = suiteName`） |
-| 每次 LLM 调用 | `generation-create` observation，含 `model` / `modelParameters` / `input` / `output` / `usage` |
-| 每次 tool 调用 | `span-create` observation，含 `arguments` / `result` |
-| 每个 `Score` | `score-create`（`dataType=NUMERIC`，`comment=rationale`，`assertions`/`metadata` 一并挂上） |
-| `onRunEnd` 的 aggregate | 一个 `run-summary` trace + 每个指标一条 `score-create` |
+| 一个 `Trial` | 一条 OTLP trace。trial 结束时发送根 span，带上任务输入和 outcome。`userId` 是 run name，`sessionId` 是 suite name。 |
+| 每次 LLM 调用 | 一条 `generation` span（`model`、参数、input、output、usage），父级是该 trial |
+| 每次 tool 调用 | 一条 `tool` span（参数和结果），父级是该 trial |
+| 每个 `Score` | `POST /api/public/scores`（`dataType=NUMERIC`，`comment=rationale`，并带上 assertions 和 metadata） |
+| `onRunEnd` 的 aggregate | 一条 `run-summary` span，外加每个指标一条 score |
+
+Trace 发到 `POST /api/public/otel/v1/traces`，请求头
+`x-langfuse-ingestion-version: 4`。一条 span 在结束后只发送一次。
+自托管 Langfuse 需要带 OTLP 端点（3.22 或更新）。
 
 实现细节：
 

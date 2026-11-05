@@ -6,25 +6,27 @@ import 'package:logging/logging.dart';
 
 import 'langfuse_config.dart';
 import 'langfuse_event.dart';
+import 'langfuse_otlp.dart';
 
-/// 把 [LangfuseEvent] 批量发到 `POST /api/public/ingestion`。
+/// 把 span 批量发到 `POST /api/public/otel/v1/traces`，把 score 发到
+/// `POST /api/public/scores`。
 ///
 /// 行为对齐 Langfuse 官方 SDK：
-///   - 内部维护一个事件 queue
+///   - 内部维护一个 queue
 ///   - 满 [LangfuseConfig.flushAt] 条立刻 flush
 ///   - 否则最长 [LangfuseConfig.flushInterval] flush 一次
 ///   - HTTP 失败按指数退避重试，最多 [LangfuseConfig.maxRetries] 次
 ///   - 关闭时 [shutdown] 强制 flush 完所有积压
 ///
-/// 仅暴露 [enqueue] / [flush] / [shutdown] 三个口子，TraceExporter 不
-/// 需要关心 HTTP / 重试 / 批处理。
+/// Trace 请求带 `x-langfuse-ingestion-version: 4`。v4 的
+/// `/api/public/ingestion` 对 trace / span / generation 返回 400。
 class LangfuseClient {
   static final _log = Logger('LangfuseClient');
 
   final LangfuseConfig config;
   final Dio _dio;
 
-  final List<LangfuseEvent> _queue = [];
+  final List<_Pending> _queue = [];
   Timer? _flushTimer;
 
   /// 串行化 flush，避免并发请求重复发同一批 event。
@@ -48,22 +50,48 @@ class LangfuseClient {
     );
   }
 
-  /// 把一条 event 放入队列。线程安全：只在 isolate-local 内调用。
+  /// 一条已经结束的 OTLP span。同一个 span id 只应入队一次。
+  void enqueueSpan(Map<String, dynamic> span) {
+    _add(_Pending.span(span));
+  }
+
+  /// 一条 score。flush 时走 [LangfuseConfig.scoresUrl]，不进 OTLP body。
+  void enqueueScore(Map<String, dynamic> score) {
+    _add(_Pending.score(score));
+  }
+
+  /// 兼容旧的 ingestion event。trace / span / generation 转成一条 OTLP
+  /// span，`score-create` 转成 scores API。
   void enqueue(LangfuseEvent event) {
-    if (_closed) return;
-    _queue.add(event);
-    if (_queue.length >= config.flushAt) {
-      // 立即触发；不 await，flush 自己串行化
-      unawaited(flush());
-    } else {
-      _scheduleFlush();
+    if (event.type == 'score-create') {
+      final score = scoreFromLegacy(event);
+      if (score != null) enqueueScore(score);
+      return;
     }
+    enqueueSpan(spanFromLegacy(event));
   }
 
   /// 多条版本，避免单条 enqueue 多次 schedule timer。
   void enqueueAll(Iterable<LangfuseEvent> events) {
     if (_closed) return;
-    _queue.addAll(events);
+    for (final event in events) {
+      if (event.type == 'score-create') {
+        final score = scoreFromLegacy(event);
+        if (score != null) _queue.add(_Pending.score(score));
+      } else {
+        _queue.add(_Pending.span(spanFromLegacy(event)));
+      }
+    }
+    if (_queue.length >= config.flushAt) {
+      unawaited(flush());
+    } else if (_queue.isNotEmpty) {
+      _scheduleFlush();
+    }
+  }
+
+  void _add(_Pending pending) {
+    if (_closed) return;
+    _queue.add(pending);
     if (_queue.length >= config.flushAt) {
       unawaited(flush());
     } else {
@@ -98,7 +126,7 @@ class LangfuseClient {
     try {
       _flushTimer?.cancel();
       _flushTimer = null;
-      final batch = List<LangfuseEvent>.from(_queue);
+      final batch = List<_Pending>.from(_queue);
       _queue.clear();
       await _send(batch);
     } finally {
@@ -107,17 +135,51 @@ class LangfuseClient {
     }
   }
 
-  Future<void> _send(List<LangfuseEvent> events) async {
-    if (events.isEmpty) return;
-    final body = {'batch': events.map((e) => e.toJson()).toList()};
+  Future<void> _send(List<_Pending> pending) async {
+    if (pending.isEmpty) return;
+    final spans = [
+      for (final item in pending)
+        if (!item.isScore) item.body,
+    ];
+    final scores = [
+      for (final item in pending)
+        if (item.isScore) item.body,
+    ];
+    if (spans.isNotEmpty) {
+      final ok = await _post(config.otelTracesUrl, otlpExport(spans), const {
+        'x-langfuse-ingestion-version': '4',
+      }, spans.length);
+      if (!ok) {
+        if (scores.isNotEmpty) {
+          _log.warning(
+            'Dropped ${scores.length} Langfuse scores after the trace batch failed',
+          );
+        }
+        return;
+      }
+    }
+    if (scores.isNotEmpty) {
+      await _post(config.scoresUrl, scores, const {}, scores.length);
+    }
+  }
 
+  /// 返回 `false` 表示这批已经放弃（4xx，或重试耗尽）。不向调用方抛。
+  Future<bool> _post(
+    String url,
+    Object body,
+    Map<String, String> headers,
+    int count,
+  ) async {
     var attempt = 0;
     while (true) {
       attempt++;
       try {
-        final resp = await _dio.post<dynamic>(config.ingestionUrl, data: body);
-        // Langfuse 在部分 event 失败时会返回 207（Multi-Status）。
-        // 200 / 201 / 207 全算成功；只要有一部分被接收就放过。
+        final resp = await _dio.post<dynamic>(
+          url,
+          data: body,
+          options: Options(headers: headers),
+        );
+        // 200 / 201 / 207 都算接收。OTLP 正常是 200。
         final status = resp.statusCode ?? -1;
         if (status >= 200 && status < 300) {
           if (status == 207) {
@@ -125,36 +187,33 @@ class LangfuseClient {
               'Langfuse partial-success (207): ${_truncate(resp.data)}',
             );
           }
-          return;
+          return true;
         }
-        // 4xx 不可恢复（鉴权 / schema 问题），扔出去
         if (status >= 400 && status < 500) {
           throw StateError(
             'Langfuse rejected batch with $status: ${_truncate(resp.data)}',
           );
         }
-        // 5xx 才进入重试
         throw _Retryable('Langfuse $status: ${_truncate(resp.data)}');
       } on _Retryable catch (e) {
         if (attempt > config.maxRetries) {
           _log.severe(
-            'Langfuse flush failed after $attempt attempts (${events.length} events dropped): $e',
+            'Langfuse flush failed after $attempt attempts ($count items dropped): $e',
           );
-          return; // 放弃，不让 eval run 因为可观测性挂掉
+          return false;
         }
         await Future.delayed(_backoff(attempt));
       } on DioException catch (e) {
-        // 网络层失败也走重试
         if (attempt > config.maxRetries) {
           _log.severe(
-            'Langfuse flush failed after $attempt attempts (${events.length} events dropped): ${e.message}',
+            'Langfuse flush failed after $attempt attempts ($count items dropped): ${e.message}',
           );
-          return;
+          return false;
         }
         await Future.delayed(_backoff(attempt));
       } catch (e) {
         _log.severe('Langfuse flush hit non-retryable error: $e');
-        return;
+        return false;
       }
     }
   }
@@ -179,6 +238,14 @@ class LangfuseClient {
     final s = data?.toString() ?? '';
     return s.length > 500 ? '${s.substring(0, 500)}...' : s;
   }
+}
+
+class _Pending {
+  final bool isScore;
+  final Map<String, dynamic> body;
+
+  const _Pending.span(this.body) : isScore = false;
+  const _Pending.score(this.body) : isScore = true;
 }
 
 class _Retryable implements Exception {
