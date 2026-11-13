@@ -5,11 +5,13 @@ import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
 
 import 'langfuse_config.dart';
-import 'langfuse_event.dart';
 import 'langfuse_otlp.dart';
 
-/// 把 span 批量发到 `POST /api/public/otel/v1/traces`，把 score 发到
-/// `POST /api/public/scores`。
+/// 把已经结束的 span 批量发到 `POST /api/public/otel/v1/traces`，把 score
+/// 以 JSON 数组发到 `POST /api/public/scores`。
+///
+/// 自托管需要 Langfuse 4.55.0 或更新。Score 即使只有一条也按数组提交，
+/// 这个批量接口是 4.55.0 才有的。
 ///
 /// 行为对齐 Langfuse 官方 SDK：
 ///   - 内部维护一个 queue
@@ -18,8 +20,8 @@ import 'langfuse_otlp.dart';
 ///   - HTTP 失败按指数退避重试，最多 [LangfuseConfig.maxRetries] 次
 ///   - 关闭时 [shutdown] 强制 flush 完所有积压
 ///
-/// Trace 请求带 `x-langfuse-ingestion-version: 4`。v4 的
-/// `/api/public/ingestion` 对 trace / span / generation 返回 400。
+/// Trace 请求带 `x-langfuse-ingestion-version: 4`。同一个 span 只应
+/// [enqueueSpan] 一次；OTLP 不合并 create / update。
 class LangfuseClient {
   static final _log = Logger('LangfuseClient');
 
@@ -55,38 +57,10 @@ class LangfuseClient {
     _add(_Pending.span(span));
   }
 
-  /// 一条 score。flush 时走 [LangfuseConfig.scoresUrl]，不进 OTLP body。
+  /// 一条 score。flush 时和同批其它 score 组成 JSON 数组，走
+  /// [LangfuseConfig.scoresUrl]，不进 OTLP body。
   void enqueueScore(Map<String, dynamic> score) {
     _add(_Pending.score(score));
-  }
-
-  /// 兼容旧的 ingestion event。trace / span / generation 转成一条 OTLP
-  /// span，`score-create` 转成 scores API。
-  void enqueue(LangfuseEvent event) {
-    if (event.type == 'score-create') {
-      final score = scoreFromLegacy(event);
-      if (score != null) enqueueScore(score);
-      return;
-    }
-    enqueueSpan(spanFromLegacy(event));
-  }
-
-  /// 多条版本，避免单条 enqueue 多次 schedule timer。
-  void enqueueAll(Iterable<LangfuseEvent> events) {
-    if (_closed) return;
-    for (final event in events) {
-      if (event.type == 'score-create') {
-        final score = scoreFromLegacy(event);
-        if (score != null) _queue.add(_Pending.score(score));
-      } else {
-        _queue.add(_Pending.span(spanFromLegacy(event)));
-      }
-    }
-    if (_queue.length >= config.flushAt) {
-      unawaited(flush());
-    } else if (_queue.isNotEmpty) {
-      _scheduleFlush();
-    }
   }
 
   void _add(_Pending pending) {
@@ -179,7 +153,8 @@ class LangfuseClient {
           data: body,
           options: Options(headers: headers),
         );
-        // 200 / 201 / 207 都算接收。OTLP 正常是 200。
+        // OTLP 正常是 200。批量 score 接受时是 202，部分失败是 207。
+        // 207 不再重试：服务端已经处理过这批。
         final status = resp.statusCode ?? -1;
         if (status >= 200 && status < 300) {
           if (status == 207) {
@@ -224,7 +199,8 @@ class LangfuseClient {
     return Duration(milliseconds: ms.clamp(100, 5000));
   }
 
-  /// flush 剩余事件 + 释放定时器。调用后 [enqueue] 静默 no-op。
+  /// flush 剩余事件 + 释放定时器。调用后 [enqueueSpan] 和
+  /// [enqueueScore] 静默 no-op。
   Future<void> shutdown() async {
     _closed = true;
     _flushTimer?.cancel();

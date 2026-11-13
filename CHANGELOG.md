@@ -1,3 +1,10 @@
+## 3.0.0
+
+### Breaking
+
+- Send Langfuse traces to `POST /api/public/otel/v1/traces` with `x-langfuse-ingestion-version: 4`, and send scores to `POST /api/public/scores` as a JSON array. Self-hosted Langfuse must be 4.55.0 or newer. Batch score creation was added in that release, so an older server can accept traces and reject every score. (#84)
+- Remove `LangfuseEvent`, `LangfuseClient.enqueue`, `LangfuseClient.enqueueAll`, and `LangfuseConfig.ingestionUrl`. Call `enqueueSpan` once with a finished span, and `enqueueScore` for a score. The ingestion adapter exported each create and update as its own span and dropped `parentObservationId`.
+
 ## 2.1.9
 
 ### Agent runtime and MCP

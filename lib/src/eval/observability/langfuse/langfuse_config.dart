@@ -9,6 +9,9 @@ import 'dart:io';
 ///     字段（默认 `default`），用来在 dashboard 上区分 dev / staging / prod
 ///   - [release] / [version] 可选标识，方便在 langfuse 上做 A/B 对比
 ///
+/// 自托管需要 Langfuse 4.55.0 或更新。Trace 走 OTLP；score 以 JSON 数组
+/// 提交，批量创建是 4.55.0 才有的。更早的服务能收下 trace，但会拒绝 score。
+///
 /// 工厂方法 [LangfuseConfig.fromEnv] 从环境变量读取，方便 CI 接入。
 class LangfuseConfig {
   /// 形如 `https://cloud.langfuse.com` 或 `https://langfuse.your-domain.com`。
@@ -77,16 +80,11 @@ class LangfuseConfig {
 
   String get _hostBase => host.replaceAll(RegExp(r'/$'), '');
 
-  /// `POST /api/public/otel/v1/traces`. Langfuse v4 accepts traces here.
+  /// `POST /api/public/otel/v1/traces`.
   String get otelTracesUrl => '$_hostBase/api/public/otel/v1/traces';
 
-  /// `POST /api/public/scores`. Scores stay on this API in v4.
+  /// `POST /api/public/scores`. The body is always a JSON array.
+  /// Langfuse 4.55.0 added batch score creation; a single score is still
+  /// a one-element array.
   String get scoresUrl => '$_hostBase/api/public/scores';
-
-  /// Legacy batch endpoint. Langfuse v4 returns 400 for every event type
-  /// except `score-create`. The client posts [otelTracesUrl] and [scoresUrl].
-  @Deprecated(
-    'Langfuse v4 rejects this endpoint for traces. Use otelTracesUrl and scoresUrl.',
-  )
-  String get ingestionUrl => '$_hostBase/api/public/ingestion';
 }

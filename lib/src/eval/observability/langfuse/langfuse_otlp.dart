@@ -2,8 +2,6 @@ import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
-import 'langfuse_event.dart';
-
 const _uuid = Uuid();
 
 /// 32 lowercase hex chars, the OTLP trace id width.
@@ -11,13 +9,6 @@ String newOtelTraceId() => _uuid.v4().replaceAll('-', '');
 
 /// 16 lowercase hex chars, the OTLP span id width.
 String newOtelSpanId() => _uuid.v4().replaceAll('-', '').substring(0, 16);
-
-/// Keeps hex and fits [length]. Legacy Langfuse ids are UUIDs with dashes.
-String otelHex(String raw, int length) {
-  final hex = raw.replaceAll(RegExp(r'[^0-9a-fA-F]'), '').toLowerCase();
-  if (hex.length >= length) return hex.substring(0, length);
-  return hex.padRight(length, '0');
-}
 
 String unixTimeNano(DateTime time) {
   final micros = time.toUtc().microsecondsSinceEpoch;
@@ -116,75 +107,6 @@ Map<String, dynamic> langfuseSpan({
       if (failed && statusMessage != null) 'message': statusMessage,
     },
   };
-}
-
-Map<String, dynamic>? scoreFromLegacy(LangfuseEvent event) {
-  if (event.type != 'score-create') return null;
-  final body = event.body;
-  final name = body['name'];
-  if (name is! String) return null;
-  final traceRaw = body['traceId'];
-  return {
-    if (body['id'] != null) 'id': body['id'],
-    if (traceRaw is String) 'traceId': otelHex(traceRaw, 32),
-    if (body['observationId'] is String)
-      'observationId': otelHex(body['observationId'] as String, 16),
-    'name': name,
-    'value': body['value'],
-    if (body['dataType'] != null) 'dataType': body['dataType'],
-    if (body['comment'] != null) 'comment': body['comment'],
-    if (body['environment'] != null) 'environment': body['environment'],
-    if (body['metadata'] != null) 'metadata': body['metadata'],
-    'timestamp': event.timestamp.toUtc().toIso8601String(),
-  };
-}
-
-Map<String, dynamic> spanFromLegacy(LangfuseEvent event) {
-  final body = event.body;
-  final traceRaw = body['traceId'] ?? body['id'];
-  final spanRaw = body['id'] ?? event.id;
-  final start = _time(body['startTime']) ?? event.timestamp;
-  final end = _time(body['endTime']) ?? start;
-  final usage = body['usage'];
-  return langfuseSpan(
-    traceId: traceRaw is String ? otelHex(traceRaw, 32) : otelHex(event.id, 32),
-    spanId: spanRaw is String ? otelHex(spanRaw, 16) : otelHex(event.id, 16),
-    name: body['name'] as String? ?? event.type,
-    type: _legacyType(event.type),
-    start: start,
-    end: end,
-    traceName: body['name'] as String? ?? event.type,
-    userId: body['userId'] as String? ?? '',
-    sessionId: body['sessionId'] as String? ?? '',
-    tags:
-        (body['tags'] as List?)?.map((t) => t.toString()).toList() ?? const [],
-    environment: body['environment'] as String? ?? 'default',
-    release: body['release'] as String?,
-    version: body['version'] as String?,
-    input: body['input'],
-    output: body['output'],
-    traceMetadata: body['metadata'] is Map
-        ? Map<String, dynamic>.from(body['metadata'] as Map)
-        : const {},
-    model: body['model'] as String?,
-    modelParameters: body['modelParameters'] is Map
-        ? Map<String, dynamic>.from(body['modelParameters'] as Map)
-        : null,
-    usage: usage is Map ? Map<String, Object?>.from(usage) : null,
-    level: body['level'] as String?,
-    statusMessage: body['statusMessage'] as String?,
-  );
-}
-
-String _legacyType(String type) {
-  if (type.startsWith('generation')) return 'generation';
-  if (type.startsWith('span')) return 'span';
-  return 'span';
-}
-
-DateTime? _time(Object? raw) {
-  if (raw is String) return DateTime.tryParse(raw);
-  return null;
 }
 
 Map<String, dynamic> _stringAttr(String key, String value) => {

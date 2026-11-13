@@ -12,12 +12,13 @@ import 'langfuse_client.dart';
 import 'langfuse_config.dart';
 import 'langfuse_otlp.dart';
 
-/// Streams trial observations to Langfuse v4 over OTLP.
+/// Streams trial observations to Langfuse 4.55.0 or newer over OTLP.
 ///
 /// One trial is one trace. The root span is exported once, when the trial
 /// ends, with the task input and the outcome on that span. Each LLM call
 /// is a `generation` span and each tool call is a `tool` span, parented to
-/// the root. Scores go to `POST /api/public/scores`, not into the trace.
+/// the root. Scores go to `POST /api/public/scores` as a JSON array, not
+/// into the trace. Batch score creation was added in 4.55.0.
 ///
 /// Trace name, user, session, tags, environment, and metadata are copied
 /// onto every span. Langfuse v4 filters observations directly, so context

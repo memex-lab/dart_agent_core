@@ -184,106 +184,99 @@ void main() {
   });
 
   group('LangfuseTraceExporter', () {
-    test(
-      'emits trace-create / generation-create / span-create / score-create',
-      () async {
-        final adapter = _CapturingAdapter();
-        final cfg = _testConfig(flushAt: 100); // never auto-flush by size
-        final exporter = _exporter(adapter, cfg);
+    test('exports one root span, child spans, and numeric scores', () async {
+      final adapter = _CapturingAdapter();
+      final cfg = _testConfig(flushAt: 100); // never auto-flush by size
+      final exporter = _exporter(adapter, cfg);
 
-        final trial = makeTrial(
-          runName: 'r1',
-          suiteName: 'suite_a',
-          taskId: 'task_x',
-        );
-        await exporter.onTrialStart(trial, _StubTask('task_x'));
-        await exporter.onLLMCall(
-          trial: trial,
-          requestMessages: [SystemMessage('hi'), UserMessage.text('q')],
-          modelConfig: ModelConfig(model: 'gpt-fake', temperature: 0.5),
-          response: textReply('answer'),
-          duration: const Duration(milliseconds: 120),
-        );
-        final tcStart = DateTime(2025, 1, 1);
-        await exporter.onToolCall(
-          trial: trial,
-          record: ToolCallRecord(
-            callId: 'c1',
-            toolName: 'add',
-            arguments: {'a': 1, 'b': 2},
-            startedAt: tcStart,
-            endedAt: tcStart.add(const Duration(milliseconds: 5)),
-          ),
-        );
-        await exporter.onTrialEnd(
-          trial: trial,
-          transcript: emptyTranscript(),
-          outcome: const Outcome(environmentState: {'answer': '3'}),
-          scores: [
-            okScore('correctness', value: 1.0),
-            failScore('citation', value: 0.5, rationale: 'missing source'),
-            nullScore('skipped'),
-          ],
-        );
-        await exporter.dispose();
+      final trial = makeTrial(
+        runName: 'r1',
+        suiteName: 'suite_a',
+        taskId: 'task_x',
+      );
+      await exporter.onTrialStart(trial, _StubTask('task_x'));
+      await exporter.onLLMCall(
+        trial: trial,
+        requestMessages: [SystemMessage('hi'), UserMessage.text('q')],
+        modelConfig: ModelConfig(model: 'gpt-fake', temperature: 0.5),
+        response: textReply('answer'),
+        duration: const Duration(milliseconds: 120),
+      );
+      final tcStart = DateTime(2025, 1, 1);
+      await exporter.onToolCall(
+        trial: trial,
+        record: ToolCallRecord(
+          callId: 'c1',
+          toolName: 'add',
+          arguments: {'a': 1, 'b': 2},
+          startedAt: tcStart,
+          endedAt: tcStart.add(const Duration(milliseconds: 5)),
+        ),
+      );
+      await exporter.onTrialEnd(
+        trial: trial,
+        transcript: emptyTranscript(),
+        outcome: const Outcome(environmentState: {'answer': '3'}),
+        scores: [
+          okScore('correctness', value: 1.0),
+          failScore('citation', value: 0.5, rationale: 'missing source'),
+          nullScore('skipped'),
+        ],
+      );
+      await exporter.dispose();
 
-        final spans = _spans(adapter.calls);
-        final roots = spans.where((s) => s['parentSpanId'] == null).toList();
-        final generations = spans
-            .where((s) => _attr(s, 'langfuse.observation.type') == 'generation')
-            .toList();
-        final tools = spans
-            .where((s) => _attr(s, 'langfuse.observation.type') == 'tool')
-            .toList();
-        expect(roots, hasLength(1));
-        expect(generations, hasLength(1));
-        expect(tools, hasLength(1));
+      final spans = _spans(adapter.calls);
+      final roots = spans.where((s) => s['parentSpanId'] == null).toList();
+      final generations = spans
+          .where((s) => _attr(s, 'langfuse.observation.type') == 'generation')
+          .toList();
+      final tools = spans
+          .where((s) => _attr(s, 'langfuse.observation.type') == 'tool')
+          .toList();
+      expect(roots, hasLength(1));
+      expect(generations, hasLength(1));
+      expect(tools, hasLength(1));
 
-        final root = roots.single;
-        final traceId = root['traceId'];
-        expect(spans.map((s) => s['traceId']).toSet(), {traceId});
-        expect(generations.single['parentSpanId'], root['spanId']);
-        expect(tools.single['parentSpanId'], root['spanId']);
-        expect(_attr(root, 'langfuse.user.id'), 'r1');
-        expect(_attr(root, 'langfuse.session.id'), 'suite_a');
-        final rootInput =
-            jsonDecode(_attr(root, 'langfuse.observation.input')!) as Map;
-        expect(rootInput['taskId'], 'task_x');
-        final rootOutput =
-            jsonDecode(_attr(root, 'langfuse.observation.output')!) as Map;
-        expect((rootOutput['environmentState'] as Map)['answer'], '3');
+      final root = roots.single;
+      final traceId = root['traceId'];
+      expect(spans.map((s) => s['traceId']).toSet(), {traceId});
+      expect(generations.single['parentSpanId'], root['spanId']);
+      expect(tools.single['parentSpanId'], root['spanId']);
+      expect(_attr(root, 'langfuse.user.id'), 'r1');
+      expect(_attr(root, 'langfuse.session.id'), 'suite_a');
+      final rootInput =
+          jsonDecode(_attr(root, 'langfuse.observation.input')!) as Map;
+      expect(rootInput['taskId'], 'task_x');
+      final rootOutput =
+          jsonDecode(_attr(root, 'langfuse.observation.output')!) as Map;
+      expect((rootOutput['environmentState'] as Map)['answer'], '3');
 
-        final gen = generations.single;
-        expect(_attr(gen, 'langfuse.observation.model.name'), 'gpt-fake');
-        final usage =
-            jsonDecode(_attr(gen, 'langfuse.observation.usage_details')!)
-                as Map;
-        expect(usage['total'], 15);
-        final parameters =
-            jsonDecode(_attr(gen, 'langfuse.observation.model.parameters')!)
-                as Map;
-        expect(parameters['temperature'], 0.5);
-        expect(
-          _attr(gen, 'langfuse.trace.name'),
-          _attr(root, 'langfuse.trace.name'),
-        );
+      final gen = generations.single;
+      expect(_attr(gen, 'langfuse.observation.model.name'), 'gpt-fake');
+      final usage =
+          jsonDecode(_attr(gen, 'langfuse.observation.usage_details')!) as Map;
+      expect(usage['total'], 15);
+      final parameters =
+          jsonDecode(_attr(gen, 'langfuse.observation.model.parameters')!)
+              as Map;
+      expect(parameters['temperature'], 0.5);
+      expect(
+        _attr(gen, 'langfuse.trace.name'),
+        _attr(root, 'langfuse.trace.name'),
+      );
 
-        expect(tools.single['name'], 'tool.add');
+      expect(tools.single['name'], 'tool.add');
 
-        final scores = _scores(adapter.calls);
-        expect(scores, hasLength(2));
-        for (final score in scores) {
-          expect(score['dataType'], 'NUMERIC');
-          expect(score['traceId'], traceId);
-          expect(score['observationId'], root['spanId']);
-          expect(score['environment'], 'test');
-        }
-        expect(scores.map((s) => s['name']).toSet(), {
-          'correctness',
-          'citation',
-        });
-      },
-    );
+      final scores = _scores(adapter.calls);
+      expect(scores, hasLength(2));
+      for (final score in scores) {
+        expect(score['dataType'], 'NUMERIC');
+        expect(score['traceId'], traceId);
+        expect(score['observationId'], root['spanId']);
+        expect(score['environment'], 'test');
+      }
+      expect(scores.map((s) => s['name']).toSet(), {'correctness', 'citation'});
+    });
 
     test('onRunEnd writes a summary trace + per-metric score', () async {
       final adapter = _CapturingAdapter();
@@ -396,6 +389,26 @@ void main() {
       expect(adapter.callIndex, 1); // no retry on 4xx
     });
 
+    test('posts one score as a JSON array and accepts 202', () async {
+      final adapter = _CapturingAdapter(responseCodes: [200, 202]);
+      final cfg = _testConfig(flushAt: 100);
+      final exporter = _exporter(adapter, cfg);
+
+      await exporter.onRunEnd(
+        runName: 'r',
+        suiteName: 's',
+        aggregateScores: {'pass@1': 1.0},
+      );
+      await exporter.dispose();
+
+      final scoreCall = adapter.calls.singleWhere(
+        (call) => call.path.endsWith('/api/public/scores'),
+      );
+      expect(scoreCall.body, isA<List<dynamic>>());
+      expect(scoreCall.body, hasLength(1));
+      expect(adapter.callIndex, 2);
+    });
+
     test('shutdown is idempotent and silently drops further events', () async {
       final adapter = _CapturingAdapter();
       final exporter = _exporter(adapter, _testConfig(flushAt: 100));
@@ -408,44 +421,6 @@ void main() {
       );
       await exporter.dispose();
       expect(adapter.calls, isEmpty);
-    });
-
-    test('legacy score-create is posted to the scores API', () async {
-      final adapter = _CapturingAdapter();
-      final cfg = _testConfig(flushAt: 100);
-      final dio = Dio(
-        BaseOptions(
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization':
-                'Basic ${base64.encode(utf8.encode('${cfg.publicKey}:${cfg.secretKey}'))}',
-          },
-          validateStatus: (_) => true,
-        ),
-      );
-      dio.httpClientAdapter = adapter;
-      final client = LangfuseClient(cfg, dio: dio);
-      client.enqueue(
-        LangfuseEvent(
-          id: 'evt',
-          type: 'score-create',
-          timestamp: DateTime.utc(2026, 1, 1),
-          body: {
-            'id': 'score-1',
-            'traceId': '11111111-1111-1111-1111-111111111111',
-            'name': 'correctness',
-            'value': 1,
-            'dataType': 'NUMERIC',
-          },
-        ),
-      );
-      await client.shutdown();
-
-      final scores = _scores(adapter.calls);
-      expect(scores, hasLength(1));
-      expect(scores.single['traceId'], '11111111111111111111111111111111');
-      expect(scores.single['name'], 'correctness');
-      expect(adapter.calls.single.path, endsWith('/api/public/scores'));
     });
   });
 }

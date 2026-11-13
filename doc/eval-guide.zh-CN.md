@@ -1001,12 +1001,21 @@ final runner = EvalRunner(
 | 一个 `Trial` | 一条 OTLP trace。trial 结束时发送根 span，带上任务输入和 outcome。`userId` 是 run name，`sessionId` 是 suite name。 |
 | 每次 LLM 调用 | 一条 `generation` span（`model`、参数、input、output、usage），父级是该 trial |
 | 每次 tool 调用 | 一条 `tool` span（参数和结果），父级是该 trial |
-| 每个 `Score` | `POST /api/public/scores`（`dataType=NUMERIC`，`comment=rationale`，并带上 assertions 和 metadata） |
+| 每个 `Score` | `POST /api/public/scores`，body 是 JSON 数组（`dataType=NUMERIC`，`comment=rationale`，并带上 assertions 和 metadata） |
 | `onRunEnd` 的 aggregate | 一条 `run-summary` span，外加每个指标一条 score |
 
 Trace 发到 `POST /api/public/otel/v1/traces`，请求头
 `x-langfuse-ingestion-version: 4`。一条 span 在结束后只发送一次。
-自托管 Langfuse 需要带 OTLP 端点（3.22 或更新）。
+Score 发到 `POST /api/public/scores`，body 是 JSON 数组，只有一条
+score 时也是数组。批量创建 score 是 Langfuse 4.55.0 加上的，自托管
+需要 4.55.0 或更新。OTLP trace 端点从 3.22 就有，但 4.55.0 之前的
+服务会收下 trace、拒绝全部 score。
+
+`LangfuseEvent`、`LangfuseClient.enqueue`、`LangfuseClient.enqueueAll`
+和 `LangfuseConfig.ingestionUrl` 已删除。已结束的 span 调用一次
+`enqueueSpan`，score 调用 `enqueueScore`。旧适配器把每条 ingestion
+事件都导出成一条已结束的 span，create 再跟一次 update 会发两次，
+`parentObservationId` 也会丢。
 
 实现细节：
 

@@ -45,7 +45,6 @@ export 'src/eval/observability/jsonl_trace_exporter.dart';
 export 'src/eval/observability/composite_trace_exporter.dart';
 export 'src/eval/observability/transcript_viewer.dart';
 export 'src/eval/observability/langfuse/langfuse_config.dart';
-export 'src/eval/observability/langfuse/langfuse_event.dart';
 export 'src/eval/observability/langfuse/langfuse_client.dart';
 export 'src/eval/observability/langfuse/langfuse_trace_exporter.dart';
 
