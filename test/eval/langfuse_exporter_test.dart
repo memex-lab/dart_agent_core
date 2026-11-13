@@ -8,10 +8,18 @@ import 'package:test/test.dart';
 
 import '_helpers.dart';
 
-/// Captures every POST hit on `/api/public/ingestion`. Drives [Dio] via a
-/// custom [HttpClientAdapter] so no actual network IO happens.
+class _Call {
+  final String path;
+  final Object? body;
+  final String? ingestionVersion;
+
+  _Call(this.path, this.body, this.ingestionVersion);
+}
+
+/// Captures Langfuse POSTs. Drives [Dio] via a custom [HttpClientAdapter]
+/// so no actual network IO happens.
 class _CapturingAdapter implements HttpClientAdapter {
-  final List<Map<String, dynamic>> bodies = [];
+  final List<_Call> calls = [];
   final List<int> responseCodes;
   int callIndex = 0;
 
@@ -23,18 +31,37 @@ class _CapturingAdapter implements HttpClientAdapter {
     Stream<List<int>>? requestStream,
     Future<dynamic>? cancelFuture,
   ) async {
-    expect(options.uri.path.endsWith('/api/public/ingestion'), isTrue);
+    final path = options.uri.path;
+    expect(
+      path.endsWith('/api/public/otel/v1/traces') ||
+          path.endsWith('/api/public/scores'),
+      isTrue,
+      reason: path,
+    );
     expect(options.headers['Authorization'], startsWith('Basic '));
+    final headers = {
+      for (final entry in options.headers.entries)
+        entry.key.toLowerCase(): entry.value,
+    };
+    if (path.endsWith('/api/public/otel/v1/traces')) {
+      expect(headers['x-langfuse-ingestion-version'], '4');
+    }
 
     final raw = options.data is String
         ? options.data as String
         : jsonEncode(options.data);
-    bodies.add(jsonDecode(raw) as Map<String, dynamic>);
+    calls.add(
+      _Call(
+        path,
+        jsonDecode(raw),
+        headers['x-langfuse-ingestion-version']?.toString(),
+      ),
+    );
 
     final code = responseCodes[callIndex.clamp(0, responseCodes.length - 1)];
     callIndex++;
     return ResponseBody.fromString(
-      '{"successes":[],"errors":[]}',
+      '{}',
       code,
       headers: {
         'content-type': ['application/json'],
@@ -44,6 +71,41 @@ class _CapturingAdapter implements HttpClientAdapter {
 
   @override
   void close({bool force = false}) {}
+}
+
+List<Map<String, dynamic>> _spans(List<_Call> calls) {
+  final spans = <Map<String, dynamic>>[];
+  for (final call in calls) {
+    if (!call.path.endsWith('/api/public/otel/v1/traces')) continue;
+    final body = call.body as Map<String, dynamic>;
+    final resourceSpans = body['resourceSpans'] as List;
+    final scopeSpans = (resourceSpans.single as Map)['scopeSpans'] as List;
+    spans.addAll(
+      ((scopeSpans.single as Map)['spans'] as List)
+          .cast<Map<String, dynamic>>(),
+    );
+  }
+  return spans;
+}
+
+List<Map<String, dynamic>> _scores(List<_Call> calls) {
+  final scores = <Map<String, dynamic>>[];
+  for (final call in calls) {
+    if (!call.path.endsWith('/api/public/scores')) continue;
+    scores.addAll((call.body as List).cast<Map<String, dynamic>>());
+  }
+  return scores;
+}
+
+String? _attr(Map<String, dynamic> span, String key) {
+  for (final attribute in span['attributes'] as List) {
+    final item = attribute as Map;
+    if (item['key'] == key) {
+      final value = item['value'] as Map;
+      return value['stringValue'] as String?;
+    }
+  }
+  return null;
 }
 
 LangfuseConfig _testConfig({int flushAt = 50, Duration? interval}) =>
@@ -113,102 +175,108 @@ void main() {
       expect(cfg.publicKey, 'pk');
       expect(cfg.secretKey, 'sk');
       expect(cfg.host, 'https://lf.example.com/');
-      expect(cfg.ingestionUrl, 'https://lf.example.com/api/public/ingestion');
+      expect(
+        cfg.otelTracesUrl,
+        'https://lf.example.com/api/public/otel/v1/traces',
+      );
+      expect(cfg.scoresUrl, 'https://lf.example.com/api/public/scores');
     });
   });
 
   group('LangfuseTraceExporter', () {
-    test(
-      'emits trace-create / generation-create / span-create / score-create',
-      () async {
-        final adapter = _CapturingAdapter();
-        final cfg = _testConfig(flushAt: 100); // never auto-flush by size
-        final exporter = _exporter(adapter, cfg);
+    test('exports one root span, child spans, and numeric scores', () async {
+      final adapter = _CapturingAdapter();
+      final cfg = _testConfig(flushAt: 100); // never auto-flush by size
+      final exporter = _exporter(adapter, cfg);
 
-        final trial = makeTrial(
-          runName: 'r1',
-          suiteName: 'suite_a',
-          taskId: 'task_x',
-        );
-        await exporter.onTrialStart(trial, _StubTask('task_x'));
-        await exporter.onLLMCall(
-          trial: trial,
-          requestMessages: [SystemMessage('hi'), UserMessage.text('q')],
-          modelConfig: ModelConfig(model: 'gpt-fake', temperature: 0.5),
-          response: textReply('answer'),
-          duration: const Duration(milliseconds: 120),
-        );
-        final tcStart = DateTime(2025, 1, 1);
-        await exporter.onToolCall(
-          trial: trial,
-          record: ToolCallRecord(
-            callId: 'c1',
-            toolName: 'add',
-            arguments: {'a': 1, 'b': 2},
-            startedAt: tcStart,
-            endedAt: tcStart.add(const Duration(milliseconds: 5)),
-          ),
-        );
-        await exporter.onTrialEnd(
-          trial: trial,
-          transcript: emptyTranscript(),
-          outcome: const Outcome(environmentState: {'answer': '3'}),
-          scores: [
-            okScore('correctness', value: 1.0),
-            failScore('citation', value: 0.5, rationale: 'missing source'),
-            nullScore('skipped'),
-          ],
-        );
-        await exporter.dispose();
+      final trial = makeTrial(
+        runName: 'r1',
+        suiteName: 'suite_a',
+        taskId: 'task_x',
+      );
+      await exporter.onTrialStart(trial, _StubTask('task_x'));
+      await exporter.onLLMCall(
+        trial: trial,
+        requestMessages: [SystemMessage('hi'), UserMessage.text('q')],
+        modelConfig: ModelConfig(model: 'gpt-fake', temperature: 0.5),
+        response: textReply('answer'),
+        duration: const Duration(milliseconds: 120),
+      );
+      final tcStart = DateTime(2025, 1, 1);
+      await exporter.onToolCall(
+        trial: trial,
+        record: ToolCallRecord(
+          callId: 'c1',
+          toolName: 'add',
+          arguments: {'a': 1, 'b': 2},
+          startedAt: tcStart,
+          endedAt: tcStart.add(const Duration(milliseconds: 5)),
+        ),
+      );
+      await exporter.onTrialEnd(
+        trial: trial,
+        transcript: emptyTranscript(),
+        outcome: const Outcome(environmentState: {'answer': '3'}),
+        scores: [
+          okScore('correctness', value: 1.0),
+          failScore('citation', value: 0.5, rationale: 'missing source'),
+          nullScore('skipped'),
+        ],
+      );
+      await exporter.dispose();
 
-        // Collect every event across batches
-        final events = adapter.bodies
-            .expand<Map<String, dynamic>>(
-              (b) => (b['batch'] as List).cast<Map<String, dynamic>>(),
-            )
-            .toList();
-        final byType = <String, List<Map<String, dynamic>>>{};
-        for (final e in events) {
-          byType.putIfAbsent(e['type'] as String, () => []).add(e);
-        }
+      final spans = _spans(adapter.calls);
+      final roots = spans.where((s) => s['parentSpanId'] == null).toList();
+      final generations = spans
+          .where((s) => _attr(s, 'langfuse.observation.type') == 'generation')
+          .toList();
+      final tools = spans
+          .where((s) => _attr(s, 'langfuse.observation.type') == 'tool')
+          .toList();
+      expect(roots, hasLength(1));
+      expect(generations, hasLength(1));
+      expect(tools, hasLength(1));
 
-        // 2 trace-create (start + end-merge), 1 gen, 1 span, 2 numeric scores
-        expect(byType['trace-create'], hasLength(2));
-        expect(byType['generation-create'], hasLength(1));
-        expect(byType['span-create'], hasLength(1));
-        expect(byType['score-create'], hasLength(2));
+      final root = roots.single;
+      final traceId = root['traceId'];
+      expect(spans.map((s) => s['traceId']).toSet(), {traceId});
+      expect(generations.single['parentSpanId'], root['spanId']);
+      expect(tools.single['parentSpanId'], root['spanId']);
+      expect(_attr(root, 'langfuse.user.id'), 'r1');
+      expect(_attr(root, 'langfuse.session.id'), 'suite_a');
+      final rootInput =
+          jsonDecode(_attr(root, 'langfuse.observation.input')!) as Map;
+      expect(rootInput['taskId'], 'task_x');
+      final rootOutput =
+          jsonDecode(_attr(root, 'langfuse.observation.output')!) as Map;
+      expect((rootOutput['environmentState'] as Map)['answer'], '3');
 
-        // Trace ids match between start + end (server-side merge).
-        final traceIds = byType['trace-create']!
-            .map((e) => (e['body'] as Map)['id'])
-            .toSet();
-        expect(traceIds, hasLength(1));
+      final gen = generations.single;
+      expect(_attr(gen, 'langfuse.observation.model.name'), 'gpt-fake');
+      final usage =
+          jsonDecode(_attr(gen, 'langfuse.observation.usage_details')!) as Map;
+      expect(usage['total'], 15);
+      final parameters =
+          jsonDecode(_attr(gen, 'langfuse.observation.model.parameters')!)
+              as Map;
+      expect(parameters['temperature'], 0.5);
+      expect(
+        _attr(gen, 'langfuse.trace.name'),
+        _attr(root, 'langfuse.trace.name'),
+      );
 
-        final gen =
-            byType['generation-create']!.single['body'] as Map<String, dynamic>;
-        expect(gen['model'], 'gpt-fake');
-        expect(gen['traceId'], traceIds.single);
-        expect(gen['usage']['total'], 15);
-        expect((gen['modelParameters'] as Map)['temperature'], 0.5);
+      expect(tools.single['name'], 'tool.add');
 
-        final span =
-            byType['span-create']!.single['body'] as Map<String, dynamic>;
-        expect(span['name'], 'tool.add');
-        expect(span['traceId'], traceIds.single);
-
-        // Scores: correct dataType + traceId, null score skipped.
-        for (final s in byType['score-create']!) {
-          final body = s['body'] as Map<String, dynamic>;
-          expect(body['dataType'], 'NUMERIC');
-          expect(body['traceId'], traceIds.single);
-          expect(body['environment'], 'test');
-        }
-        final scoreNames = byType['score-create']!
-            .map((e) => (e['body'] as Map)['name'])
-            .toSet();
-        expect(scoreNames, {'correctness', 'citation'});
-      },
-    );
+      final scores = _scores(adapter.calls);
+      expect(scores, hasLength(2));
+      for (final score in scores) {
+        expect(score['dataType'], 'NUMERIC');
+        expect(score['traceId'], traceId);
+        expect(score['observationId'], root['spanId']);
+        expect(score['environment'], 'test');
+      }
+      expect(scores.map((s) => s['name']).toSet(), {'correctness', 'citation'});
+    });
 
     test('onRunEnd writes a summary trace + per-metric score', () async {
       final adapter = _CapturingAdapter();
@@ -222,20 +290,15 @@ void main() {
       );
       await exporter.dispose();
 
-      final events = adapter.bodies
-          .expand<Map<String, dynamic>>(
-            (b) => (b['batch'] as List).cast<Map<String, dynamic>>(),
-          )
-          .toList();
-      final traces = events.where((e) => e['type'] == 'trace-create').toList();
-      final scores = events.where((e) => e['type'] == 'score-create').toList();
-      expect(traces, hasLength(1));
-      expect((traces.single['body'] as Map)['name'], 'run-summary:suite_a');
-      expect((traces.single['body'] as Map)['userId'], 'pr-42');
+      final spans = _spans(adapter.calls);
+      final scores = _scores(adapter.calls);
+      expect(spans, hasLength(1));
+      expect(spans.single['name'], 'run-summary:suite_a');
+      expect(_attr(spans.single, 'langfuse.user.id'), 'pr-42');
       expect(scores, hasLength(2));
-      final summaryTraceId = (traces.single['body'] as Map)['id'];
-      for (final s in scores) {
-        expect((s['body'] as Map)['traceId'], summaryTraceId);
+      for (final score in scores) {
+        expect(score['traceId'], spans.single['traceId']);
+        expect(score['observationId'], spans.single['spanId']);
       }
     });
 
@@ -270,8 +333,8 @@ void main() {
       // After 2 events queued (== flushAt), flush is scheduled. Pump
       // microtasks so the unawaited flush runs.
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      expect(adapter.bodies, hasLength(1));
-      expect((adapter.bodies.single['batch'] as List).length, 2);
+      expect(adapter.calls, hasLength(1));
+      expect(_spans(adapter.calls), hasLength(2));
       await exporter.dispose();
     });
 
@@ -294,8 +357,14 @@ void main() {
         aggregateScores: {'p1': 1.0},
       );
       await exporter.dispose();
-      // 503 then 200 → adapter saw 2 calls
-      expect(adapter.callIndex, 2);
+      // 503 then 200 for the trace, then 200 for the score.
+      expect(adapter.callIndex, 3);
+      expect(
+        adapter.calls.where(
+          (c) => c.path.endsWith('/api/public/otel/v1/traces'),
+        ),
+        hasLength(2),
+      );
     });
 
     test('4xx is fatal — no retry', () async {
@@ -320,6 +389,26 @@ void main() {
       expect(adapter.callIndex, 1); // no retry on 4xx
     });
 
+    test('posts one score as a JSON array and accepts 202', () async {
+      final adapter = _CapturingAdapter(responseCodes: [200, 202]);
+      final cfg = _testConfig(flushAt: 100);
+      final exporter = _exporter(adapter, cfg);
+
+      await exporter.onRunEnd(
+        runName: 'r',
+        suiteName: 's',
+        aggregateScores: {'pass@1': 1.0},
+      );
+      await exporter.dispose();
+
+      final scoreCall = adapter.calls.singleWhere(
+        (call) => call.path.endsWith('/api/public/scores'),
+      );
+      expect(scoreCall.body, isA<List<dynamic>>());
+      expect(scoreCall.body, hasLength(1));
+      expect(adapter.callIndex, 2);
+    });
+
     test('shutdown is idempotent and silently drops further events', () async {
       final adapter = _CapturingAdapter();
       final exporter = _exporter(adapter, _testConfig(flushAt: 100));
@@ -331,18 +420,7 @@ void main() {
         aggregateScores: {'p1': 1.0},
       );
       await exporter.dispose();
-      // Only the very first dispose flushed (which had nothing to flush).
-      // Second batch should NOT have been sent.
-      final batches = adapter.bodies;
-      // There may have been one empty flush attempt; ensure no late
-      // events leaked through.
-      for (final b in batches) {
-        final batch = b['batch'] as List;
-        for (final e in batch) {
-          final body = (e as Map)['body'] as Map;
-          expect(body['userId'] != 'late', isTrue);
-        }
-      }
+      expect(adapter.calls, isEmpty);
     });
   });
 }

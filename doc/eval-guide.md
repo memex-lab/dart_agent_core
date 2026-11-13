@@ -1064,11 +1064,26 @@ Mapping:
 
 | dart_agent_core | Langfuse |
 |---|---|
-| One `Trial` | One trace (`name = suite/task#trialIndex`, `userId = runName`, `sessionId = suiteName`) |
-| Each LLM call | A `generation-create` observation (with `model` / `modelParameters` / `input` / `output` / `usage`) |
-| Each tool call | A `span-create` observation (with `arguments` / `result`) |
-| Each `Score` | A `score-create` (`dataType=NUMERIC`, `comment=rationale`, plus `assertions` / `metadata`) |
-| `onRunEnd` aggregates | A `run-summary` trace plus one `score-create` per metric |
+| One `Trial` | One OTLP trace. The root span is sent when the trial ends, with the task input and the outcome. `userId` is the run name and `sessionId` is the suite name. |
+| Each LLM call | A `generation` span (`model`, parameters, input, output, usage), parented to the trial |
+| Each tool call | A `tool` span (`arguments`, result), parented to the trial |
+| Each `Score` | `POST /api/public/scores` as a JSON array (`dataType=NUMERIC`, `comment=rationale`, plus assertions and metadata) |
+| `onRunEnd` aggregates | A `run-summary` span plus one score per metric |
+
+Traces go to `POST /api/public/otel/v1/traces` with
+`x-langfuse-ingestion-version: 4`. A span is exported once, after it
+ends. Scores are posted to `POST /api/public/scores` as a JSON array,
+including a batch of one. Batch score creation was added in Langfuse
+4.55.0, so a self-hosted server has to be 4.55.0 or newer. The OTLP
+trace endpoint is older (3.22), but a server from before 4.55.0 will
+keep the traces and reject the scores.
+
+`LangfuseEvent`, `LangfuseClient.enqueue`, `LangfuseClient.enqueueAll`,
+and `LangfuseConfig.ingestionUrl` are removed. Pass a finished span to
+`enqueueSpan` once, and a score map to `enqueueScore`. The old adapter
+turned each ingestion event into its own finished span, so a create
+followed by an update was exported twice and `parentObservationId` was
+dropped.
 
 Implementation details:
 
